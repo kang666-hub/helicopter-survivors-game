@@ -30,3 +30,74 @@ body {
   letter-spacing: 0.1em;
 }
 
+/* Responsive media queries for max-width: 768px (Mobile Portrait Screens) */
+@media (max-width: 768px) {
+  /* Set canvas to occupy full viewport width with standard 4:3 aspect ratio */
+  #battlefield_canvas {
+    width: 100vw !important;
+    max-width: 100% !important;
+    height: auto !important;
+    aspect-ratio: 4 / 3 !important;
+  }
+
+  /* Core container layout spacing adaptiveness on touch screens */
+  #game_app_container {
+    padding-left: 0.5rem !important;
+    padding-right: 0.5rem !important;
+    padding-top: 1rem !important;
+    padding-bottom: 2rem !important;
+  }
+
+  /* Expand overlays to cover the whole viewport and allow natural scrolling on portrait/small height devices */
+  #start_screen_overlay,
+  #upgrade_screen_overlay,
+  #gameover_screen_overlay {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    z-index: 50 !important;
+    overflow-y: auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    padding-top: 2rem !important;
+    padding-bottom: 25dvh !important; /* give generous bottom breathing space for scroll indicators */
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
+    backdrop-filter: blur(12px) !important;
+    background-color: rgba(9, 12, 16, 0.98) !important;
+  }
+
+  /* Simplify internal flexbox column cascades to flow smoothly on vertical orientation */
+  #start_screen_overlay .grid, 
+  #upgrade_screen_overlay .grid {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 0.75rem !important;
+    width: 100% !important;
+  }
+
+  /* Adapt dialog size constraints for mobile width */
+  #start_screen_overlay > div,
+  #upgrade_screen_overlay > div,
+  #gameover_screen_overlay > div {
+    max-width: 100% !important;
+    width: 100% !important;
+    margin-left: auto !important;
+    margin-right: auto !important;
+  }
+
+  /* Support wrapping for select options across all units */
+  #start_screen_overlay button,
+  #upgrade_screen_overlay button {
+    width: 100% !important;
+    flex-direction: row !important;
+    align-items: center !important;
+  }
+}
+

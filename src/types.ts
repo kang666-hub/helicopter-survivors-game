@@ -40,9 +40,10 @@ export interface Enemy {
   speed: number;
   hp: number;
   maxHp: number;
-  type: 'drone' | 'fast_drone' | 'shield_drone' | 'boss';
+  type: 'drone' | 'fast_drone' | 'shield_drone' | 'boss' | 'sniper_drone';
   scoreValue: number;
   isHitFlash: number; // timer in ticks for flash effect
+  shootCooldown?: number;
 }
 
 export interface Bullet {
@@ -53,7 +54,7 @@ export interface Bullet {
   vy: number;
   radius: number;
   damage: number;
-  type: 'player_basic' | 'player_missile' | 'player_flare' | 'player_evo_pierce';
+  type: 'player_basic' | 'player_missile' | 'player_flare' | 'player_evo_pierce' | 'enemy_bullet';
   penetration: number; // how many enemies it can pass through
   duration?: number; // remaining life time in seconds (for flares, etc)
   angle?: number; // rotational angle or direction

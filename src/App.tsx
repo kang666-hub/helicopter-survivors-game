@@ -415,6 +415,26 @@ export default function App() {
       return { x, y };
     };
 
+    const updateJoystickVector = (touchX: number, touchY: number) => {
+      const joy = joystickRef.current;
+      const dx = touchX - joy.baseX;
+      const dy = touchY - joy.baseY;
+      const dist = Math.hypot(dx, dy);
+      const limit = 60; // outer boundary
+
+      if (dist > limit) {
+        joy.curX = joy.baseX + (dx / dist) * limit;
+        joy.curY = joy.baseY + (dy / dist) * limit;
+        joy.vx = dx / dist; // exact normalized direction of flight
+        joy.vy = dy / dist;
+      } else {
+        joy.curX = touchX;
+        joy.curY = touchY;
+        joy.vx = dx / limit; // scalable speed multiplier [0..1]
+        joy.vy = dy / limit;
+      }
+    };
+
     const handleTouchStart = (e: TouchEvent) => {
       if (gameStateRef.current !== 'PLAYING') return;
 
@@ -423,16 +443,13 @@ export default function App() {
         const touch = e.touches[i];
         const pos = getTouchPos(touch);
         
-        // Dynamic detection threshold: let users touch anywhere near joystick base (120px leeway)
+        // Touch near the lower-left joystick region (160px threshold or left quadrant)
         const distToJoyBase = Math.hypot(pos.x - joy.baseX, pos.y - joy.baseY);
-        if (distToJoyBase < 120) {
+        if (distToJoyBase < 160 || (pos.x < 350 && pos.y > 250)) {
           joy.active = true;
           joy.startX = pos.x;
           joy.startY = pos.y;
-          joy.curX = pos.x;
-          joy.curY = pos.y;
-          joy.vx = 0;
-          joy.vy = 0;
+          updateJoystickVector(pos.x, pos.y);
           e.preventDefault();
           break;
         }
@@ -440,6 +457,8 @@ export default function App() {
     };
 
     const handleTouchMove = (e: TouchEvent) => {
+      if (gameStateRef.current !== 'PLAYING') return;
+      
       const joy = joystickRef.current;
       if (!joy.active) return;
 
@@ -447,22 +466,7 @@ export default function App() {
         const touch = e.touches[i];
         const pos = getTouchPos(touch);
 
-        const dx = pos.x - joy.startX;
-        const dy = pos.y - joy.startY;
-        const dist = Math.hypot(dx, dy);
-
-        const limit = 60; // Max drag boundary for the thumb stick
-        if (dist > limit) {
-          joy.curX = joy.startX + (dx / dist) * limit;
-          joy.curY = joy.startY + (dy / dist) * limit;
-          joy.vx = dx / dist;
-          joy.vy = dy / dist;
-        } else {
-          joy.curX = pos.x;
-          joy.curY = pos.y;
-          joy.vx = dx / limit;
-          joy.vy = dy / limit;
-        }
+        updateJoystickVector(pos.x, pos.y);
         e.preventDefault();
         break;
       }
@@ -478,13 +482,17 @@ export default function App() {
       joy.vy = 0;
       joy.curX = joy.baseX;
       joy.curY = joy.baseY;
+      
+      if (gameStateRef.current === 'PLAYING') {
+        e.preventDefault();
+      }
     };
 
     // Use passive: false to enable preventDefault scrolling lockout on touch controls!
     canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
     canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
-    canvas.addEventListener('touchend', handleTouchEnd);
-    canvas.addEventListener('touchcancel', handleTouchEnd);
+    canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
+    canvas.addEventListener('touchcancel', handleTouchEnd, { passive: false });
 
     return () => {
       canvas.removeEventListener('touchstart', handleTouchStart);
@@ -527,21 +535,12 @@ export default function App() {
       { type: preset.initialWeapon, level: 1, cooldownTimer: 0 }
     ];
 
-    // 3. Clear all game entities references using both length = 0 and reassignment (Bulletproof)
+    // 3. Clear all game entities references in-place strictly using .length = 0 (Preserving actual array references to avoid stale closures in active frames)
     if (enemiesRef.current) enemiesRef.current.length = 0;
-    enemiesRef.current = [];
-
     if (bulletsRef.current) bulletsRef.current.length = 0;
-    bulletsRef.current = [];
-
     if (trailsRef.current) trailsRef.current.length = 0;
-    trailsRef.current = [];
-
     if (batteriesRef.current) batteriesRef.current.length = 0;
-    batteriesRef.current = [];
-
     if (particlesRef.current) particlesRef.current.length = 0;
-    particlesRef.current = [];
 
     frameCountRef.current = 0;
     lastTimeRef.current = Date.now();
@@ -836,7 +835,8 @@ export default function App() {
 
     const gameLoop = () => {
       if (gameStateRef.current !== 'PLAYING' || !isPlayingRef.current) {
-        // Just keep request going or stall
+        // Continuously refresh timestamp baseline during idle/paused phases to prevent deltaTime bursts!
+        lastTimeRef.current = Date.now();
         animId = requestAnimationFrame(gameLoop);
         animationFrameIdRef.current = animId;
         return;
@@ -948,15 +948,22 @@ export default function App() {
         });
       }
 
-      // 3. ENEMY SPAWNER OVERTIME GENERATOR
-      // Based on survival time: base spawn interval decays every 30 seconds
+      // 3. ENEMY SPAWNER OVERTIME GENERATOR with Dynamic Time Scaling difficulty curve
       const elapsedSeconds = p.timeElapsed;
-      const batchPeriod = Math.max(25, 65 - Math.floor(elapsedSeconds / 30) * 10); // Spawner generates enemies faster over time
+
+      // Time Scaling Multiplier system (increases difficulty slightly linearly every 30 seconds)
+      const timeFactor = Math.floor(elapsedSeconds / 30);
+      const enemySpeedScale = 0.6 + timeFactor * 0.15; // Starting with a 40% reduction (0.6) at the initial stage, increasing linearly
+      const hpScale = 1.0 + timeFactor * 0.20;    // Linear HP scaling of 20% every 30s
+      
+      // Spawner frequency (interval in frames): initial batchPeriod = 90 frames (1.5 seconds)
+      // Generates enemies faster over time as frame interval decreases
+      const batchPeriod = Math.max(20, 90 - timeFactor * 15);
       const maxEnemiesOnField = 250 + Math.floor(elapsedSeconds / 10) * 20;
 
       // Spawn normal and fast drones
       if (frameCountRef.current % batchPeriod === 0 && enemiesRef.current.length < maxEnemiesOnField) {
-        // Spawn enemies just outside of camera viewport ring (approx 450px out)
+        // Spawn count slightly goes up over time
         const spawnCount = 2 + Math.floor(elapsedSeconds / 35);
         for (let s = 0; s < spawnCount; s++) {
           const spawnAngle = Math.random() * Math.PI * 2;
@@ -966,30 +973,58 @@ export default function App() {
 
           // Don't spawn outside world size limits
           if (ex > 10 && ex < worldSize - 10 && ey > 10 && ey < worldSize - 10) {
-            // Pick drone class
             const roll = Math.random();
-            let etype: 'drone' | 'fast_drone' | 'shield_drone' = 'drone';
-            let ehp = 12 + Math.floor(elapsedSeconds / 20) * 5;
-            let espeed = 1.4 + Math.random() * 0.4;
-            let ewidth = 16;
-            let eheight = 16;
+            let etype: 'drone' | 'fast_drone' | 'shield_drone' | 'sniper_drone' = 'drone';
+            let ehp = 10;
+            let espeed = 1.0; // Base speed: 20 * 0.05 = 1.0
+            let ewidth = 14;
+            let eheight = 14;
             let scoreVal = 10;
 
-            if (roll > 0.85) {
-              etype = 'shield_drone'; // Tanky but slower
-              ehp = 40 + Math.floor(elapsedSeconds / 20) * 12;
-              espeed = 0.85;
-              ewidth = 22;
-              eheight = 22;
-              scoreVal = 30;
-            } else if (roll > 0.65) {
-              etype = 'fast_drone'; // Swift bug drones
-              ehp = 6 + Math.floor(elapsedSeconds / 30) * 3;
-              espeed = 2.5;
-              ewidth = 12;
-              eheight = 12;
-              scoreVal = 20;
+            // Conditional Spawn for Type D (Sniper Drone): starts appearing after 60 seconds
+            const sniperAvailable = elapsedSeconds >= 60;
+
+            if (sniperAvailable && roll < 0.15) {
+              // Type D: 遠程狙擊機 (Purple, Medium size) - 15% spawn chance if unlocked after 60s
+              etype = 'sniper_drone';
+              ehp = 20; // HP 20 base
+              espeed = 1.5; // Speed 30 * 0.05 = 1.5
+              ewidth = 18;
+              eheight = 18;
+              scoreVal = 40;
+            } else {
+              // Roll among Type A, B, and C
+              const subRoll = Math.random();
+              if (subRoll < 0.60) {
+                // Type A: 偵察無人機 (Green, Small) - 佔比最高 (60%)
+                etype = 'drone';
+                ehp = 10;
+                espeed = 1.0; // Speed 20 * 0.05 = 1.0
+                ewidth = 14;
+                eheight = 14;
+                scoreVal = 10;
+              } else if (subRoll < 0.85) {
+                // Type B: 自殺突擊機 (Yellow, Small) - 25%
+                etype = 'fast_drone';
+                ehp = 5;
+                espeed = 3.5; // Speed 70 * 0.05 = 3.5
+                ewidth = 11;
+                eheight = 11;
+                scoreVal = 15;
+              } else {
+                // Type C: 重型裝甲機 (Dark Red, Large) - 15%
+                etype = 'shield_drone';
+                ehp = 50;
+                espeed = 1.5; // Speed 30 * 0.05 = 1.5
+                ewidth = 26;
+                eheight = 26;
+                scoreVal = 30;
+              }
             }
+
+            // Apply calculated Dynamic Time Scaling (difficulty curve multipliers)
+            const finalHp = Math.max(1, Math.round(ehp * hpScale));
+            const finalSpeed = espeed * enemySpeedScale;
 
             enemiesRef.current.push({
               id: `${Date.now()}-${Math.random()}`,
@@ -999,9 +1034,9 @@ export default function App() {
               vy: 0,
               width: ewidth,
               height: eheight,
-              speed: espeed,
-              hp: ehp,
-              maxHp: ehp,
+              speed: finalSpeed,
+              hp: finalHp,
+              maxHp: finalHp,
               type: etype,
               scoreValue: scoreVal,
               isHitFlash: 0
@@ -1327,57 +1362,115 @@ export default function App() {
           continue;
         }
 
-        // Check weapon hit collisions against enemies (distance circles or bounding rectangles)
+        // Check weapon hit collisions against enemies or player depending on weapon source
         let hitSomething = false;
-        for (let eIdx = enemies.length - 1; eIdx >= 0; eIdx--) {
-          const e = enemies[eIdx];
-          const collisionDist = Math.hypot(b.x - e.x, b.y - e.y);
-          const hitRadius = Math.max(e.width, e.height) / 1.5 + b.radius;
 
-          if (collisionDist < hitRadius) {
-            // Apply damage!
-            e.hp -= b.damage;
-            e.isHitFlash = 3; // flash enemy body brief ticks
-            playSound('hit');
+        if (b.type === 'enemy_bullet') {
+          // Verify hitting the player instead of enemies
+          const distToPlayer = Math.hypot(b.x - p.x, b.y - p.y);
+          const hitRadius = p.radius + b.radius; // player radius + bullet radius
 
-            // Spawn bright strike spark particles
-            particlesRef.current.push({
-              x: b.x,
-              y: b.y,
-              vx: (Math.random() - 0.5) * 3,
-              vy: (Math.random() - 0.5) * 3,
-              color: '#fef08a',
-              size: 2.5,
-              life: 0.5,
-              decay: 0.1
-            });
-
-            // Special Homing Missile Aoe Area Splinter Explode on strike
-            if (b.type === 'player_missile') {
-              // Add strong screen vibration
-              setShakeIntensity(prev => Math.min(10, prev + 5.0));
-              playSound('explosion');
-
-              // Identify all enemies in explosion radius (approx 75px radius)
-              const areaRad = b.radius === 5 ? 75 : 60; // smaller for sub-missile drones
-              enemies.forEach(otherE => {
-                const aoeDist = Math.hypot(otherE.x - b.x, otherE.y - b.y);
-                if (aoeDist < areaRad) {
-                  otherE.hp -= b.damage * 0.75; // aoe dealing 75% splash damage
-                  otherE.isHitFlash = 3;
-                }
-              });
-
-              spawnExplosion(b.x, b.y, '#f97316', 15);
-              hitSomething = true;
+          if (distToPlayer < hitRadius) {
+            // Apply damage to player!
+            // First check if player has active F-22 stealth or invincibility ticks
+            let isF22Stealth = false;
+            if (p.vehicleType === 'F22') {
+              const stealthCycle = p.timeElapsed % 12;
+              isF22Stealth = stealthCycle >= 10;
             }
 
-            // Reduce Bullet Penetration count or destroy it
-            b.penetration -= 1;
-            if (b.penetration <= 0) {
-              hitSomething = true;
-              bullets.splice(bIdx, 1);
-              break; // bullet dissolved, exit enemy loop
+            if (playerInvincibleTicksRef.current <= 0 && !isF22Stealth) {
+              const dmg = 8; // standard damage from red sniper bullet
+              p.hp = Math.max(0, p.hp - dmg);
+              playerInvincibleTicksRef.current = 20; // brief recovery
+              setHudHp(p.hp);
+              playSound('hit');
+              spawnExplosion(p.x, p.y, '#ef4444', 10);
+              
+              if (p.hp <= 0) {
+                isPlayingRef.current = false;
+                changeGameState('GAMEOVER');
+              }
+            }
+
+            hitSomething = true;
+            bullets.splice(bIdx, 1);
+            continue; // Go to next bullet
+          }
+        } else {
+          // Standard player bullet path: check collision against all active enemies on field
+          for (let eIdx = enemies.length - 1; eIdx >= 0; eIdx--) {
+            const e = enemies[eIdx];
+            const collisionDist = Math.hypot(b.x - e.x, b.y - e.y);
+            const hitRadius = Math.max(e.width, e.height) / 1.5 + b.radius;
+
+            if (collisionDist < hitRadius) {
+              // Apply damage!
+              e.hp -= b.damage;
+              e.isHitFlash = 3; // flash enemy body brief ticks
+              playSound('hit');
+
+              // Spawn bright strike spark particles
+              particlesRef.current.push({
+                x: b.x,
+                y: b.y,
+                vx: (Math.random() - 0.5) * 3,
+                vy: (Math.random() - 0.5) * 3,
+                color: '#fef08a',
+                size: 2.5,
+                life: 0.5,
+                decay: 0.1
+              });
+
+              // Special Homing Missile Aoe Area Splinter Explode on strike
+              if (b.type === 'player_missile') {
+                // Add strong screen vibration
+                setShakeIntensity(prev => Math.min(10, prev + 5.0));
+                playSound('explosion');
+
+                // Base explosion radius scaled to 80px
+                const areaRad = 80;
+                enemies.forEach(otherE => {
+                  const aoeDist = Math.hypot(otherE.x - b.x, otherE.y - b.y);
+                  if (aoeDist < areaRad) {
+                    otherE.hp -= b.damage; // deal damage to all enemies in area
+                    otherE.isHitFlash = 3;
+                  }
+                });
+
+                spawnExplosion(b.x, b.y, '#f97316', 12);
+
+                // Concentric expanding dot-matrix pixelated shockwave animation
+                for (let r = 1; r <= 3; r++) {
+                  const numDots = r * 10;
+                  const ringRadius = r * 16;
+                  for (let j = 0; j < numDots; j++) {
+                    const ang = (j / numDots) * Math.PI * 2;
+                    const cosVal = Math.cos(ang);
+                    const sinVal = Math.sin(ang);
+                    particlesRef.current.push({
+                      x: b.x + cosVal * ringRadius,
+                      y: b.y + sinVal * ringRadius,
+                      vx: cosVal * (1.5 + r * 1.8),
+                      vy: sinVal * (1.5 + r * 1.8),
+                      color: r === 1 ? '#f43f5e' : r === 2 ? '#f97316' : '#eab308',
+                      size: r === 1 ? 4.5 : r === 2 ? 3.5 : 2.5,
+                      life: 1.0,
+                      decay: 0.04 + Math.random() * 0.02
+                    });
+                  }
+                }
+
+                hitSomething = true;
+              }
+
+              // Reduce Bullet Penetration count or destroy it
+              b.penetration -= 1;
+              if (b.penetration <= 0) {
+                hitSomething = true;
+                bullets.splice(bIdx, 1);
+                break; // bullet dissolved, exit enemy loop
+              }
             }
           }
         }
@@ -1481,9 +1574,60 @@ export default function App() {
         const dy = p.y - e.y;
         const dist = Math.hypot(dx, dy);
 
-        if (dist > 1) {
-          e.vx = (dx / dist) * e.speed;
-          e.vy = (dy / dist) * e.speed;
+        // Sniper Drone behavioral mechanics: maintains 250px distance & handles periodic shooting
+        if (e.type === 'sniper_drone') {
+          // Initialize shooting cooldown on first update ticks
+          if (e.shootCooldown === undefined) {
+            e.shootCooldown = Math.random() * 2.5;
+          }
+
+          // Shoot timer decay
+          e.shootCooldown -= deltaTime;
+          if (e.shootCooldown <= 0) {
+            e.shootCooldown = 2.5; // fire every 2.5 seconds precisely
+
+            if (dist > 1) {
+              const fireAngle = Math.atan2(dy, dx);
+              const bSpeed = 3.8; // beautiful clean visible speed
+              bulletsRef.current.push({
+                id: `sniper-bullet-${Date.now()}-${Math.random()}`,
+                x: e.x,
+                y: e.y,
+                vx: Math.cos(fireAngle) * bSpeed,
+                vy: Math.sin(fireAngle) * bSpeed,
+                radius: 4.5,
+                damage: 8, // deals 8 structural damage
+                type: 'enemy_bullet',
+                penetration: 1
+              });
+              playSound('shoot'); // subtle shooting acoustic
+            }
+          }
+
+          // Maintain 250px distance positioning steering
+          const targetDist = 250;
+          const deadzone = 30; // 220~280 range hover zone
+
+          if (dist > targetDist + deadzone) {
+            // too far, fly closer towards player
+            e.vx = (dx / dist) * e.speed;
+            e.vy = (dy / dist) * e.speed;
+          } else if (dist < targetDist - deadzone) {
+            // too close, retreat backwards!
+            e.vx = -(dx / dist) * e.speed;
+            e.vy = -(dy / dist) * e.speed;
+          } else {
+            // hover and slowly orbit around the player
+            // Perpendicular tangent vectors
+            e.vx = (-dy / dist) * e.speed * 0.5;
+            e.vy = (dx / dist) * e.speed * 0.5;
+          }
+        } else {
+          // Standard enemy types AI: head toward player
+          if (dist > 1) {
+            e.vx = (dx / dist) * e.speed;
+            e.vy = (dy / dist) * e.speed;
+          }
         }
 
         // Apply physical coordinates
@@ -1640,8 +1784,8 @@ export default function App() {
         const bat = batteries[bIdx];
         const distToPlayer = Math.hypot(p.x - bat.x, p.y - bat.y);
 
-        // Within magnetism catch range (increased to 100px for easier pickups)
-        const magnetRange = 100; 
+        // Within magnetism catch range (highly boosted to 150px for ultimate pickups)
+        const magnetRange = 150; 
         if (distToPlayer < magnetRange || bat.vying) {
           bat.vying = true; // lock tracking state
 
@@ -1907,54 +2051,89 @@ export default function App() {
         ctx.translate(ex, ey);
 
         if (e.type === 'drone') {
-          // Normal Red Drone: diamond matrix block
-          ctx.fillStyle = '#27272a'; // dark zinc border casing
+          // Type A: Green scouting drone
+          ctx.fillStyle = '#14532d'; // dark forest green casing
           ctx.fillRect(-hw, -hh, e.width, e.height);
           
-          ctx.fillStyle = '#ef4444'; // glowing neon eye
-          ctx.fillRect(-hw + 3, -hh + 3, e.width - 6, e.height - 6);
+          ctx.fillStyle = '#22c55e'; // glowing neon emerald eye
+          ctx.fillRect(-hw + 2, -hh + 2, e.width - 4, e.height - 4);
 
-          // Top corner miniature radar lights
-          ctx.fillStyle = '#fef08a';
+          // Top corner light specs
+          ctx.fillStyle = '#a7f3d0';
           ctx.fillRect(-hw + 1, -hh + 1, 2, 2);
           ctx.fillRect(hw - 3, hh - 3, 2, 2);
         } 
         else if (e.type === 'fast_drone') {
-          // Fast Insect Drone: delta wing shape
-          ctx.fillStyle = '#ea580c'; // burn orange body
+          // Type B: Yellow suicide assault drone (delta wing flying fast)
+          ctx.fillStyle = '#ca8a04'; // dark gold border
           ctx.beginPath();
-          ctx.moveTo(0, -hh); // top apex
-          ctx.lineTo(hw, hh); // bottom right
-          ctx.lineTo(-hw, hh); // bottom left
+          ctx.moveTo(0, -hh); // top leading apex
+          ctx.lineTo(hw, hh);
+          ctx.lineTo(-hw, hh);
           ctx.closePath();
           ctx.fill();
 
-          // Core pixel blue eye
-          ctx.fillStyle = '#60a5fa';
-          ctx.fillRect(-2, -1, 4, 3);
+          ctx.fillStyle = '#fef08a'; // hyper yellow inner wing core
+          ctx.beginPath();
+          ctx.moveTo(0, -hh + 3);
+          ctx.lineTo(hw - 2, hh - 1);
+          ctx.lineTo(-hw + 2, hh - 1);
+          ctx.closePath();
+          ctx.fill();
+
+          // Core pixel blue thruster guide
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(-1.5, -0.5, 3, 2);
         } 
         else if (e.type === 'shield_drone') {
-          // Shield heavy drone: Octagon heavy tank
-          ctx.fillStyle = '#78716c'; // Stone gray shields
+          // Type C: Dark Red Heavy Armored Tank Drone
+          ctx.fillStyle = '#7f1d1d'; // dark maroon heavy shielding
           ctx.beginPath();
-          ctx.moveTo(-hw, -hh + 4);
-          ctx.lineTo(-hw + 4, -hh);
-          ctx.lineTo(hw - 4, -hh);
-          ctx.lineTo(hw, -hh + 4);
-          ctx.lineTo(hw, hh - 4);
-          ctx.lineTo(hw - 4, hh);
-          ctx.lineTo(-hw + 4, hh);
-          ctx.lineTo(-hw, hh - 4);
+          ctx.moveTo(-hw, -hh + 5);
+          ctx.lineTo(-hw + 5, -hh);
+          ctx.lineTo(hw - 5, -hh);
+          ctx.lineTo(hw, -hh + 5);
+          ctx.lineTo(hw, hh - 5);
+          ctx.lineTo(hw - 5, hh);
+          ctx.lineTo(-hw + 5, hh);
+          ctx.lineTo(-hw, hh - 5);
           ctx.closePath();
           ctx.fill();
 
-          // Dark core
-          ctx.fillStyle = '#1c1917';
+          // Dark reactor core
+          ctx.fillStyle = '#3f0c0a';
           ctx.fillRect(-hw / 2, -hh / 2, hw, hh);
 
-          // Emerald indicators
-          ctx.fillStyle = '#22c55e';
-          ctx.fillRect(-2, -2, 4, 4);
+          // Glowing plasma reactor light
+          ctx.fillStyle = '#ef4444'; // glowing red core eye
+          ctx.fillRect(-3, -3, 6, 6);
+          ctx.fillStyle = '#fca5a5';
+          ctx.fillRect(-1, -1, 2, 2);
+        } 
+        else if (e.type === 'sniper_drone') {
+          // Type D: Purple Sniper drone (Medium sleek violet diamond fighter)
+          ctx.fillStyle = '#581c87'; // dark purple casing
+          ctx.beginPath();
+          ctx.moveTo(0, -hh);    // pointed laser rail
+          ctx.lineTo(hw, 0);     // right wing expander
+          ctx.lineTo(0, hh);     // rear thruster nozzle
+          ctx.lineTo(-hw, 0);    // left wing
+          ctx.closePath();
+          ctx.fill();
+
+          // Inner sleek shield plate
+          ctx.fillStyle = '#a855f7'; // neon violet reactor eye
+          ctx.beginPath();
+          ctx.moveTo(0, -hh + 4);
+          ctx.lineTo(hw - 3, 0);
+          ctx.lineTo(0, hh - 4);
+          ctx.lineTo(-hw + 3, 0);
+          ctx.closePath();
+          ctx.fill();
+
+          // Charge lens (laser point at front apex)
+          ctx.fillStyle = '#fae8ff';
+          ctx.fillRect(-1.5, -hh + 1, 3, 3);
         } 
         else if (e.type === 'boss') {
           // RENDER BOSS: GIANT BOMBER V-shape Flying Wing (90x52)
@@ -2106,6 +2285,17 @@ export default function App() {
           ctx.strokeStyle = '#ef4444';
           ctx.lineWidth = 1.5;
           ctx.strokeRect(-12, -4, 24, 8);
+        }
+        else if (b.type === 'enemy_bullet') {
+          // Enemy sniper red bullet: high contrast glowing crimson orb
+          ctx.beginPath();
+          ctx.arc(0, 0, b.radius, 0, Math.PI * 2);
+          const grad = ctx.createRadialGradient(0, 0, 1, 0, 0, b.radius);
+          grad.addColorStop(0, '#ffffff'); // pure bright core
+          grad.addColorStop(0.3, '#f43f5e'); // neon rose/red middle
+          grad.addColorStop(1, 'rgba(225, 29, 72, 0)'); // fade out edge
+          ctx.fillStyle = grad;
+          ctx.fill();
         }
 
         ctx.restore();
@@ -2443,7 +2633,7 @@ export default function App() {
         <div id="deck_grid_split_row" className="grid grid-cols-1 lg:grid-cols-4 gap-4 items-start w-full">
           
           {/* LEFT AVIONICS FLIGHT CONTROLLER PANEL */}
-          <div id="left_panel_avionics" className="lg:col-span-1 flex flex-col gap-4 bg-slate-900/80 border border-slate-800/80 p-4 rounded-xl shadow-lg backdrop-blur-sm self-stretch min-h-[500px]">
+          <div id="left_panel_avionics" className="order-2 lg:order-1 lg:col-span-1 flex flex-col gap-4 bg-slate-900/80 border border-slate-800/80 p-4 rounded-xl shadow-lg backdrop-blur-sm self-stretch min-h-[500px]">
             <h2 className="text-sm font-bold text-teal-400 font-mono tracking-wider border-b border-slate-800 pb-2 flex items-center gap-1.5 uppercase">
               <Cpu className="h-4 w-4 shrink-0 animate-pulse text-teal-500" /> Weapon Systems
             </h2>
@@ -2548,7 +2738,7 @@ export default function App() {
           </div>
 
           {/* MAIN RADAR CANVAS GAME CONSOLE viewport */}
-          <div id="radar_canvas_central_core" className="lg:col-span-3 flex flex-col items-center bg-slate-900/40 border border-slate-800/60 rounded-xl overflow-hidden shadow-2xl relative">
+          <div id="radar_canvas_central_core" className="order-1 lg:order-2 lg:col-span-3 flex flex-col items-center bg-slate-900/40 border border-slate-800/60 rounded-xl overflow-hidden shadow-2xl relative">
             
             {/* SCREEN CALIBRATION BEZEL TOP */}
             <div className="w-full bg-slate-900/90 text-slate-400 border-b border-slate-850 px-4 py-2 flex items-center justify-between text-xs font-mono">
