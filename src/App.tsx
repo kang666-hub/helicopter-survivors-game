@@ -87,6 +87,7 @@ export default function App() {
   const lastTimeRef = useRef<number>(0);
   const playerInvincibleTicksRef = useRef<number>(0);
   const droneAngleRef = useRef<number>(0);
+  const magnetFlashRef = useRef<number>(0);
 
   // Sound generator helpers using Web Audio API
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -1140,15 +1141,27 @@ export default function App() {
               spawnExplosion(e.x + (Math.random() - 0.5) * 80, e.y + (Math.random() - 0.5) * 80, '#f59e0b', 12);
             }
           } else {
-            // Drop standard green energy batteries (XP cubes)
-            // Roll chance to drop battery over crashes
-            if (Math.random() > 0.1) {
+            // 5% chance of dropping a Magnet instead of regular batteries
+            if (Math.random() < 0.05) {
               batteriesRef.current.push({
-                id: `bat-${Date.now()}-${Math.random()}`,
+                id: `magnet-${Date.now()}-${Math.random()}`,
                 x: e.x,
                 y: e.y,
-                xpValue: e.type === 'shield_drone' ? 3 : 1
+                xpValue: 0,
+                type: 'magnet'
               });
+            } else {
+              // Standard green energy batteries (XP cubes) with remaining 95%
+              // Roll 90% chance to drop battery over crashes (meaning Math.random() > 0.1)
+              if (Math.random() > 0.1) {
+                batteriesRef.current.push({
+                  id: `bat-${Date.now()}-${Math.random()}`,
+                  x: e.x,
+                  y: e.y,
+                  xpValue: e.type === 'shield_drone' ? 3 : 1,
+                  type: 'xp'
+                });
+              }
             }
           }
 
@@ -1243,13 +1256,19 @@ export default function App() {
         const bat = batteries[bIdx];
         const distToPlayer = Math.hypot(p.x - bat.x, p.y - bat.y);
 
-        // Within magnetism catch range (50px as requested + dynamic level enhancements, say)
-        const magnetRange = 65; 
+        // Within magnetism catch range (increased to 100px for easier pickups)
+        const magnetRange = 100; 
         if (distToPlayer < magnetRange || bat.vying) {
           bat.vying = true; // lock tracking state
 
-          // Accelerate toward helicopter cockpit
-          const speedFactor = 10.0;
+          // Smooth acceleration: item flies progressively faster
+          if (bat.speed === undefined) {
+            bat.speed = 2.0;
+          } else {
+            bat.speed = Math.min(22.0, bat.speed + 0.6);
+          }
+          const speedFactor = bat.speed;
+          
           const mdx = p.x - bat.x;
           const mdy = p.y - bat.y;
           const pullAngle = Math.atan2(mdy, mdx);
@@ -1259,37 +1278,73 @@ export default function App() {
 
           // Absorb Battery completely on cockpit overlay
           if (distToPlayer < 14) {
-            p.xp += bat.xpValue;
-            
-            // Gain score/battery absorption audio
-            playSound('shoot');
-
-            // Quick micro flash
-            particlesRef.current.push({
-              x: p.x,
-              y: p.y,
-              vx: (Math.random() - 0.5) * 1,
-              vy: (Math.random() - 0.5) * 1,
-              color: '#22c55e',
-              size: 2.0,
-              life: 0.5,
-              decay: 0.1
-            });
-
-            // Handle levelling up events
-            if (p.xp >= p.maxXp) {
-              p.level += 1;
-              p.xp -= p.maxXp; // transfer excess xp
-              p.maxXp = Math.floor(10 + p.level * 8);
-
-              // Update synced states
-              setHudLevel(p.level);
-              setHudXp(p.xp);
-              setHudMaxXp(p.maxXp);
-
-              triggerLevelUp(p.level);
+            if (bat.type === 'magnet') {
+              // Trigger full screen Magnet powerup effect!
+              playSound('power');
+              
+              // Full screen lightning overlay flash & camera shake
+              magnetFlashRef.current = 15;
+              setShakeIntensity(prev => Math.min(15, prev + 8.0));
+              
+              // High impact blue shockwave particle animation around player
+              for (let i = 0; i < 40; i++) {
+                const ang = (i / 40) * Math.PI * 2;
+                particlesRef.current.push({
+                  x: p.x,
+                  y: p.y,
+                  vx: Math.cos(ang) * (4 + Math.random() * 6),
+                  vy: Math.sin(ang) * (4 + Math.random() * 6),
+                  color: '#3b82f6', // electric blue
+                  size: 2.5 + Math.random() * 3,
+                  life: 1.0,
+                  decay: 0.02 + Math.random() * 0.02
+                });
+              }
+              
+              // Instantly drag all OTHER items currently on screen
+              batteries.forEach(otherBat => {
+                if (otherBat.id !== bat.id) {
+                  otherBat.vying = true;
+                  if (otherBat.speed === undefined) {
+                    otherBat.speed = 5.5; // faster initial velocity
+                  }
+                }
+              });
             } else {
-              setHudXp(p.xp);
+              p.xp += bat.xpValue;
+              
+              // Gain score/battery absorption audio
+              playSound('shoot');
+
+              // Quick micro flash
+              particlesRef.current.push({
+                x: p.x,
+                y: p.y,
+                vx: (Math.random() - 0.5) * 1,
+                vy: (Math.random() - 0.5) * 1,
+                color: '#22c55e',
+                size: 2.0,
+                life: 0.5,
+                decay: 0.1
+              });
+
+              // Handle levelling up events
+              if (p.xp >= p.maxXp) {
+                p.level += 1;
+                p.xp -= p.maxXp; // transfer excess xp
+                
+                // Dynamic exponential/linear XP curve: 10 + (lvl * 5) + Math.pow(lvl, 1.5) * 2; lvl 1 is exactly 10
+                p.maxXp = p.level === 1 ? 10 : Math.floor(10 + (p.level * 5) + Math.pow(p.level, 1.5) * 2);
+
+                // Update synced states
+                setHudLevel(p.level);
+                setHudXp(p.xp);
+                setHudMaxXp(p.maxXp);
+
+                triggerLevelUp(p.level);
+              } else {
+                setHudXp(p.xp);
+              }
             }
 
             batteries.splice(bIdx, 1);
@@ -1401,23 +1456,53 @@ export default function App() {
       });
       ctx.restore();
 
-      // RENDER DROP BATTERIES (GREEN GLOW CUBES)
+      // RENDER DROP BATTERIES (GREEN GLOW CUBES OR BLUE LIGHTNING MAGNET)
       batteriesRef.current.forEach(bat => {
         const batX = bat.x - cameraX;
         const batY = bat.y - cameraY;
         
-        // pulsing glow
-        const glowPulse = Math.sin(frameCountRef.current * 0.15) * 2;
-        ctx.fillStyle = '#22c55e';
-        ctx.shadowColor = '#22c55e';
-        ctx.shadowBlur = 4;
-        
-        // Draw double square to simulate micro sci-fi engine energy cells
-        ctx.fillRect(batX - 4, batY - 4, 8, 8);
-        ctx.fillStyle = '#86efac';
-        ctx.fillRect(batX - 2, batY - 2, 4, 4);
-        
-        ctx.shadowBlur = 0; // reset shadow right away
+        if (bat.type === 'magnet') {
+          // High quality glowing blue electric lightning icon
+          const glowPulse = Math.sin(frameCountRef.current * 0.2) * 3;
+          ctx.fillStyle = '#1e40af'; // dark blue base
+          ctx.beginPath();
+          ctx.arc(batX, batY, 7, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.fillStyle = '#3b82f6'; // vibrant neon blue
+          ctx.shadowColor = '#3b82f6';
+          ctx.shadowBlur = 6 + glowPulse;
+          ctx.beginPath();
+          ctx.arc(batX, batY, 5, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Draw lightning bolt
+          ctx.fillStyle = '#e0f2fe'; // sky-blue white
+          ctx.beginPath();
+          ctx.moveTo(batX + 1, batY - 4);
+          ctx.lineTo(batX - 2, batY + 0);
+          ctx.lineTo(batX - 0.5, batY + 0);
+          ctx.lineTo(batX - 1.5, batY + 4);
+          ctx.lineTo(batX + 2, batY - 0);
+          ctx.lineTo(batX + 0.5, batY - 0);
+          ctx.closePath();
+          ctx.fill();
+
+          ctx.shadowBlur = 0;
+        } else {
+          // pulsing glow
+          const glowPulse = Math.sin(frameCountRef.current * 0.15) * 2;
+          ctx.fillStyle = '#22c55e';
+          ctx.shadowColor = '#22c55e';
+          ctx.shadowBlur = 4;
+          
+          // Draw double square to simulate micro sci-fi engine energy cells
+          ctx.fillRect(batX - 4, batY - 4, 8, 8);
+          ctx.fillStyle = '#86efac';
+          ctx.fillRect(batX - 2, batY - 2, 4, 4);
+          
+          ctx.shadowBlur = 0; // reset shadow right away
+        }
       });
 
       // RENDER ENEMIES (Drones and Boss visual structure)
@@ -1754,6 +1839,13 @@ export default function App() {
       ctx.restore(); // retrieve shake translation frames safely
 
       ctx.restore(); // restore global saves
+
+      // Draw screen lightning blue flash if magnet was activated (absolute screen-space overlay)
+      if (magnetFlashRef.current > 0) {
+        ctx.fillStyle = `rgba(147, 197, 253, ${magnetFlashRef.current * 0.06})`;
+        ctx.fillRect(0, 0, 800, 600);
+        magnetFlashRef.current--;
+      }
 
       // Continue game execution frames
       animId = requestAnimationFrame(gameLoop);

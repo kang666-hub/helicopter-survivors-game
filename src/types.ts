@@ -79,6 +79,8 @@ export interface BatteryItem {
   y: number;
   xpValue: number;
   vying?: boolean; // magnet state active
+  type?: 'xp' | 'magnet'; // drop type
+  speed?: number; // magnet speed factor
 }
 
 export interface Particle {
