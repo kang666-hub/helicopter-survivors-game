@@ -1,0 +1,103 @@
+// Game Types and Interfaces
+
+export type GameState = 'START' | 'PLAYING' | 'UPGRADE' | 'GAMEOVER' | 'VICTORY';
+
+export interface WeaponState {
+  type: 'machine_gun' | 'homing_missile' | 'flare' | 'evo_pierce' | 'evo_drones';
+  level: number; // 1-5; 6 is Evolved
+  cooldownTimer: number; // in seconds
+}
+
+export interface Player {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  radius: number;
+  hp: number;
+  maxHp: number;
+  level: number;
+  xp: number;
+  maxXp: number;
+  angle: number; // rotation for rotor blades and tilt
+  rotorAngle: number; // rotor rotation angle
+  weapons: WeaponState[];
+  kills: number;
+  timeElapsed: number; // in seconds
+}
+
+export interface Enemy {
+  id: string;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  width: number;
+  height: number;
+  speed: number;
+  hp: number;
+  maxHp: number;
+  type: 'drone' | 'fast_drone' | 'shield_drone' | 'boss';
+  scoreValue: number;
+  isHitFlash: number; // timer in ticks for flash effect
+}
+
+export interface Bullet {
+  id: string;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  radius: number;
+  damage: number;
+  type: 'player_basic' | 'player_missile' | 'player_flare' | 'player_evo_pierce';
+  penetration: number; // how many enemies it can pass through
+  duration?: number; // remaining life time in seconds (for flares, etc)
+  angle?: number; // rotational angle or direction
+  trailTimer?: number; // to spawn trail fire
+}
+
+export interface FireTrail {
+  id: string;
+  x: number;
+  y: number;
+  radius: number;
+  damage: number;
+  duration: number; // life in seconds
+  maxDuration: number;
+}
+
+export interface DroneOrbiter {
+  angle: number; // current orbit angle
+  radius: number; // distance from player
+  shootCooldownSec: number;
+}
+
+export interface BatteryItem {
+  id: string;
+  x: number;
+  y: number;
+  xpValue: number;
+  vying?: boolean; // magnet state active
+}
+
+export interface Particle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  color: string;
+  size: number;
+  life: number; // 0 to 1
+  decay: number;
+}
+
+export interface UpgradeOption {
+  id: string;
+  type: 'machine_gun' | 'homing_missile' | 'flare' | 'evo_pierce' | 'evo_drones' | 'heal' | 'max_hp';
+  title: string;
+  description: string;
+  icon: string;
+  isEvolution: boolean;
+  costDesc?: string;
+}

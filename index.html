@@ -1,0 +1,2176 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>戰鬥直升機：無盡突圍 - Standalone Pixel Edition</title>
+  <style>
+    /* Premium Retro Sci-Fi Game Styling */
+    @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&family=Space+Grotesk:wght@500;700;900&display=swap');
+
+    :root {
+      --primary: #22c55e;
+      --primary-dim: rgba(34, 197, 94, 0.2);
+      --primary-glow: rgba(34, 197, 94, 0.4);
+      --bg-darker: #080b0e;
+      --bg-dark: #0f1319;
+      --bg-card: #151b23;
+      --border-color: #242f3d;
+      --text-muted: #64748b;
+      --text-light: #f1f5f9;
+      --accent-orange: #f97316;
+      --accent-purple: #a855f7;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+
+    body {
+      background-color: var(--bg-darker);
+      color: var(--text-light);
+      font-family: 'JetBrains Mono', monospace;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      overflow-x: hidden;
+      image-rendering: pixelated;
+    }
+
+    /* Outer Arcade Cabinet Frame */
+    .arcade-wrapper {
+      position: relative;
+      background: linear-gradient(135deg, #10161f 0%, #080b0f 100%);
+      border: 4px solid #1e293b;
+      border-radius: 12px;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+      padding: 16px;
+      max-width: 840px;
+      width: 100%;
+      margin: 20px auto;
+    }
+
+    /* Holographic Glare Filter Effect Over the Game Container */
+    .game-viewport {
+      position: relative;
+      width: 800px;
+      height: 600px;
+      background-color: #0c0f14;
+      border: 3px solid var(--border-color);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+
+    #gameCanvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      background-color: #0b0e12;
+    }
+
+    /* CRT Scanlines Overlay */
+    .game-viewport::after {
+      content: " ";
+      display: block;
+      position: absolute;
+      top: 0; left: 0; bottom: 0; right: 0;
+      background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+      background-size: 100% 3px, 6px 100%;
+      z-index: 10;
+      pointer-events: none;
+      opacity: 0.85;
+    }
+
+    /* On-canvas Overlay Screens (Start, Level-Up, GameOver, Victory) */
+    .overlay-screen {
+      position: absolute;
+      inset: 0;
+      background-color: rgba(6, 9, 13, 0.94);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      z-index: 20;
+      text-align: center;
+      backdrop-filter: blur(4px);
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    /* Logo & Headings with Neon Glows */
+    h1.glow-title {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 38px;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: var(--primary);
+      text-shadow: 0 0 10px var(--primary-glow), 0 0 20px var(--primary-glow);
+      margin-bottom: 12px;
+    }
+
+    h2.screen-header {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 28px;
+      font-weight: 700;
+      text-transform: uppercase;
+      margin-bottom: 20px;
+    }
+
+    .text-emerald { color: var(--primary); }
+    .text-rose { color: #f43f5e; }
+    .text-purple { color: var(--accent-purple); }
+    .text-orange { color: var(--accent-orange); }
+
+    /* Tactical Retro Button Styles */
+    .pixel-btn {
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 16px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      padding: 12px 28px;
+      background-color: #166534;
+      color: #ffffff;
+      border: 3px solid var(--primary);
+      border-radius: 4px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      box-shadow: 0 4px 0 0 #14532d, 0 0 15px var(--primary-dim);
+      margin-top: 20px;
+    }
+
+    .pixel-btn:hover {
+      background-color: var(--primary);
+      box-shadow: 0 4px 0 0 #166534, 0 0 25px var(--primary-glow);
+      transform: translateY(-2px);
+    }
+
+    .pixel-btn:active {
+      transform: translateY(2px);
+      box-shadow: 0 0px 0 0 #14532d;
+    }
+
+    .btn-orange {
+      background-color: #c2410c;
+      border-color: var(--accent-orange);
+      box-shadow: 0 4px 0 0 #9a3412, 0 0 15px rgba(249, 115, 22, 0.2);
+    }
+    .btn-orange:hover {
+      background-color: var(--accent-orange);
+      box-shadow: 0 4px 0 0 #c2410c, 0 0 25px rgba(249, 115, 22, 0.4);
+    }
+
+    .btn-rose {
+      background-color: #9f1239;
+      border-color: #f43f5e;
+      box-shadow: 0 4px 0 0 #881337, 0 0 15px rgba(244, 63, 94, 0.2);
+    }
+    .btn-rose:hover {
+      background-color: #f43f5e;
+      box-shadow: 0 4px 0 0 #9f1239, 0 0 25px rgba(244, 63, 94, 0.4);
+    }
+
+    /* Upgrade Grid System */
+    .upgrade-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      width: 100%;
+      max-width: 740px;
+      margin-top: 15px;
+    }
+
+    .upgrade-card {
+      background-color: var(--bg-card);
+      border: 2px solid var(--border-color);
+      border-radius: 8px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      cursor: pointer;
+      position: relative;
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    .upgrade-card:hover {
+      border-color: var(--primary);
+      background-color: #1e2836;
+      transform: translateY(-4px);
+      box-shadow: 0 8px 20px rgba(34, 197, 94, 0.15);
+    }
+
+    .upgrade-card.evolution {
+      border-color: var(--accent-purple);
+      box-shadow: 0 0 12px rgba(168, 85, 247, 0.2);
+    }
+    .upgrade-card.evolution:hover {
+      border-color: #d8b4fe;
+      background-color: #241b35;
+      box-shadow: 0 8px 24px rgba(168, 85, 247, 0.4);
+    }
+
+    .upgrade-badge {
+      position: absolute;
+      top: -10px;
+      font-size: 10px;
+      font-weight: bold;
+      padding: 2px 8px;
+      border-radius: 999px;
+      text-transform: uppercase;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.5);
+    }
+
+    .badge-std {
+      background-color: #1e293b;
+      border: 1px solid var(--text-muted);
+      color: #cbd5e1;
+    }
+
+    .badge-evo {
+      background-color: #581c87;
+      border: 1px solid var(--accent-purple);
+      color: #f3e8ff;
+      animation: pulseGlow 1.5s infinite alternate;
+    }
+
+    @keyframes pulseGlow {
+      0% { box-shadow: 0 0 5px rgba(168, 85, 247, 0.5); }
+      100% { box-shadow: 0 0 15px rgba(168, 85, 247, 0.9); }
+    }
+
+    .upgrade-icon {
+      font-size: 36px;
+      margin: 10px 0;
+    }
+
+    .upgrade-title {
+      font-size: 13px;
+      font-weight: 800;
+      color: #fff;
+      margin-bottom: 6px;
+      text-align: center;
+    }
+
+    .upgrade-desc {
+      font-size: 11px;
+      color: var(--text-muted);
+      line-height: 1.4;
+      text-align: center;
+      margin-top: auto;
+    }
+
+    .evolution .upgrade-title {
+      color: #e9bcff;
+    }
+
+    .evolution .upgrade-desc {
+      color: #d8b4fe;
+    }
+
+    /* Metadata details rows */
+    .stat-rows {
+      background-color: rgba(15, 19, 25, 0.8);
+      border: 1px solid var(--border-color);
+      padding: 12px;
+      border-radius: 6px;
+      width: 100%;
+      max-width: 450px;
+      margin: 15px 0;
+      text-align: left;
+    }
+
+    .stat-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      padding: 6px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+    .stat-row:last-child {
+      border-bottom: none;
+    }
+    .stat-label {
+      color: var(--text-muted);
+    }
+    .stat-val {
+      font-weight: bold;
+    }
+
+    /* Sound Mute/Volume controls positioning */
+    .controls-overlay {
+      position: absolute;
+      top: 15px;
+      right: 15px;
+      display: flex;
+      gap: 10px;
+      z-index: 15;
+    }
+
+    .control-icon-btn {
+      background: rgba(30, 41, 59, 0.7);
+      border: 1px solid var(--border-color);
+      width: 34px;
+      height: 34px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .control-icon-btn:hover {
+      background: var(--primary-dim);
+      border-color: var(--primary);
+    }
+
+    /* Legend Instructions Footnote */
+    .bezel-footer {
+      display: flex;
+      justify-content: space-between;
+      color: var(--text-muted);
+      font-size: 11px;
+      margin-top: 10px;
+      width: 100%;
+      border-top: 1px solid var(--border-color);
+      padding-top: 10px;
+    }
+
+    .system-banner {
+      color: var(--primary);
+      font-weight: bold;
+    }
+
+    /* Support Details Panel in Select Menu */
+    .requirement-box {
+      font-size: 10px;
+      color: #a855f7;
+      background: rgba(168, 85, 247, 0.1);
+      padding: 4px 8px;
+      border-radius: 4px;
+      margin-top: 6px;
+      border: 1px solid rgba(168, 85, 247, 0.2);
+    }
+
+    /* Virtual Joystick for Touches/Demo */
+    .mobile-joystick-wrap {
+      display: none;
+      position: absolute;
+      bottom: 25px;
+      left: 25px;
+      width: 100px;
+      height: 100px;
+      background: rgba(255,255,255,0.05);
+      border: 2px solid rgba(255,255,255,0.15);
+      border-radius: 50%;
+      z-index: 15;
+      justify-content: center;
+      align-items: center;
+    }
+    .mobile-joystick-nob {
+      width: 40px;
+      height: 40px;
+      background: var(--primary);
+      border-radius: 50%;
+      box-shadow: 0 0 10px rgba(34, 197, 94, 0.5);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Game Shell Wrapper -->
+  <div class="arcade-wrapper">
+
+    <!-- Screen Bezel Viewport -->
+    <div class="game-viewport" id="viewport">
+      
+      <!-- Live Game Controls Panel Overlay -->
+      <div class="controls-overlay">
+        <button class="control-icon-btn" id="muteBtn" title="靜音/取消靜音">
+          <!-- Speaker Graphic -->
+          <svg style="width: 18px; height: 18px" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15.536 8.464a5 5 0 010 7.072M18.364 5.636a9 9 0 010 12.728M12 18.75V5.25L7.75 9.5H4.5v5h3.25L12 18.75z"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Start Screen Menu -->
+      <div class="overlay-screen" id="startScreen">
+        <div style="position: absolute; inset: 0; background: radial-gradient(circle, rgba(16,185,129,0.08) 0%, rgba(0,0,0,0) 80%); pointer-events:none;"></div>
+        <div class="upgrade-icon">🚁</div>
+        <h1 class="glow-title">戰鬥直升機：無盡突圍</h1>
+        <p style="color: var(--primary); font-size: 13px; font-weight: bold; margin-bottom: 24px; text-transform: uppercase; letter-spacing: 1px;">
+          PROTOTYPE CODENAME: INFINITE HELLFIRE
+        </p>
+        
+        <div class="stat-rows" style="max-width: 480px;">
+          <div class="stat-row">
+            <span class="stat-label">🔧 操作指令</span>
+            <span class="stat-val text-emerald">[W] [A] [S] [D] 或 按鍵控制移動</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">🔫 武器系統</span>
+            <span class="stat-val">自動追蹤、全天候火力覆蓋</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">🔋 科技躍遷</span>
+            <span class="stat-val">擊落無人機掉落能量電池，滿 XP 即暫停挑選升級</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">⏱️ 特殊遭遇</span>
+            <span class="stat-val text-rose">生存滿 2 分鐘時，巨型轟炸機 BOSS 降臨</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">🌟 開局紀錄</span>
+            <span class="stat-val text-orange">歷史最高斬獲: <span id="highestScoreLabel">0</span> 架次</span>
+          </div>
+        </div>
+
+        <button class="pixel-btn" id="startBtn">啟動直升機推進器</button>
+      </div>
+
+      <!-- Level Up Upgrade Select Screen -->
+      <div class="overlay-screen hidden" id="upgradeScreen">
+        <span class="text-emerald" style="font-size: 12px; font-weight: bold; letter-spacing: 2px; text-transform: uppercase;">MODULE ACQUIRED</span>
+        <h2 class="screen-header text-emerald" style="margin-bottom: 5px;">機載系統科技升級</h2>
+        <p style="color: var(--text-muted); font-size: 12px; margin-bottom: 20px;">戰區防禦網路已暫停，請挑選重組武裝配備 (3 選 1)</p>
+        
+        <!-- Options List Group container -->
+        <div class="upgrade-grid" id="upgradeGrid">
+          <!-- Dynamic injected nodes -->
+        </div>
+      </div>
+
+      <!-- GameOver Screen -->
+      <div class="overlay-screen hidden" id="gameoverScreen">
+        <div style="background-color: rgba(244, 63, 94, 0.05); position: absolute; inset:0; pointer-events:none;"></div>
+        <div style="font-size: 48px; margin-bottom: 10px;">💥</div>
+        <h2 class="screen-header text-rose" style="margin-bottom: 5px;">任務失敗，直升機已被擊墜</h2>
+        <p style="color: var(--text-muted); font-size: 11px; margin-bottom: 20px; font-family: sans-serif;">無人轟炸艦射穿了主要裝甲與油箱。請重新佈編科技！</p>
+        
+        <div class="stat-rows">
+          <div class="stat-row">
+            <span class="stat-label">生存時間</span>
+            <span class="stat-val" id="timeSurvivedVal">0分 0秒</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">擊毀敵方無人機</span>
+            <span class="stat-val text-emerald" id="killsVal">0 架次</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">達到的戰術等級</span>
+            <span class="stat-val text-orange" id="levelVal">1 級</span>
+          </div>
+          <div class="stat-row flex-col">
+            <span class="stat-label">成功超武進化</span>
+            <span class="stat-val text-purple" id="evolutionsVal">零</span>
+          </div>
+        </div>
+
+        <button class="pixel-btn btn-rose" id="redeployBtn">重新開局 (REDEPLOY)</button>
+      </div>
+
+      <!-- Victory Win Screen -->
+      <div class="overlay-screen hidden" id="victoryScreen">
+        <div class="upgrade-icon">🏆</div>
+        <h2 class="screen-header text-emerald" style="margin-bottom: 5px;">戰役勝利！</h2>
+        <p style="color: var(--text-muted); font-size: 12px; margin-bottom: 20px;">
+          你擊落了巨型轟炸機 BOSS，完美保衛了領空防線！
+        </p>
+        
+        <div class="stat-rows">
+          <div class="stat-row">
+            <span class="stat-label">作戰成果</span>
+            <span class="stat-val text-emerald">BOSS已被全面瓦解</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">總擊墜架次</span>
+            <span class="stat-val text-emerald" id="vicKills">0 架</span>
+          </div>
+          <div class="stat-row">
+            <span class="stat-label">最終等級</span>
+            <span class="stat-val text-orange" id="vicLevel">0 級</span>
+          </div>
+        </div>
+
+        <button class="pixel-btn btn-orange" id="winAgainBtn">繼續無盡突圍</button>
+      </div>
+
+      <!-- Touch Analog stick container for mobile inputs (Hidden on Desktop automatically) -->
+      <div class="mobile-joystick-wrap" id="joystickContainer">
+        <div class="mobile-joystick-nob" id="joystickNob"></div>
+      </div>
+
+      <!-- Real Game Canvas Renderer -->
+      <canvas id="gameCanvas" width="800" height="600"></canvas>
+
+    </div>
+
+    <!-- Bezel Bottom Grid Information Panels -->
+    <div class="bezel-footer">
+      <div>
+        <span>控制: </span>
+        <span class="system-banner">[W][A][S][D] / 方向鍵 移動</span>
+      </div>
+      <div>
+        <span>科技體系: </span>
+        <span class="system-banner" style="color: var(--accent-purple);">🔥 燃燒穿甲彈 ＆ 🚀 浮游砲陣列</span>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // --- GAME CONSTANTS AND VARIABLES ---
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const worldSize = 2500; // Large 2.5K boundary tactical field
+
+    // Audio Context and Sounds Synth
+    let audioCtx = null;
+    let isMuted = false;
+
+    // Mutated Game Engine entities
+    let gameState = 'START'; // 'START' | 'PLAYING' | 'UPGRADE' | 'GAMEOVER' | 'VICTORY'
+    let highKills = 0;
+
+    // Key inputs mapping
+    const keys = {};
+
+    // Restore highscore
+    try {
+      if (localStorage.getItem('helicopter_high_score')) {
+        highKills = parseInt(localStorage.getItem('helicopter_high_score'), 10) || 0;
+      }
+    } catch (e) {}
+    document.getElementById('highestScoreLabel').innerText = highKills;
+
+    // Player metrics state
+    const player = {
+      x: 1250,
+      y: 1250,
+      vx: 0,
+      vy: 0,
+      radius: 20,
+      hp: 100,
+      maxHp: 100,
+      level: 1,
+      xp: 0,
+      maxXp: 10,
+      rotorAngle: 0,
+      angle: 0, // craft yaw/rotation tilt
+      kills: 0,
+      timeElapsed: 0,
+      weapons: [
+        { type: 'machine_gun', level: 1, cooldownTimer: 0 }
+      ],
+      activeEvolutions: []
+    };
+
+    // Arrays holding references
+    let enemies = [];
+    let bullets = [];
+    let trails = []; // static burning fields
+    let batteries = []; // xp green gems
+    let particles = []; // graphic explosion dusts
+    let activeDrones = []; // placeholder tracking evolved helper options
+    
+    // Timer details
+    let frameCount = 0;
+    let lastTime = Date.now();
+    let playerInvincibleTicks = 0;
+    let droneOrbitAngle = 0;
+    let screenShakeAmt = 0;
+    let bossActive = false;
+
+    // --- SOUND EFFECTS SYNTHESIZATION ---
+    function playSound(type) {
+      if (isMuted) return;
+      try {
+        if (!audioCtx) {
+          audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (audioCtx.state === 'suspended') {
+          audioCtx.resume();
+        }
+        const now = audioCtx.currentTime;
+
+        switch (type) {
+          case 'shoot': {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(320, now);
+            osc.frequency.exponentialRampToValueAtTime(70, now + 0.1);
+            gain.gain.setValueAtTime(0.06, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start(now);
+            osc.stop(now + 0.1);
+            break;
+          }
+          case 'missile': {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(110, now);
+            osc.frequency.exponentialRampToValueAtTime(450, now + 0.25);
+            gain.gain.setValueAtTime(0.12, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start(now);
+            osc.stop(now + 0.3);
+            break;
+          }
+          case 'flare': {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(580, now);
+            osc.frequency.exponentialRampToValueAtTime(120, now + 0.35);
+            gain.gain.setValueAtTime(0.08, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.35);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start(now);
+            osc.stop(now + 0.35);
+            break;
+          }
+          case 'hit': {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(130, now);
+            osc.frequency.setValueAtTime(50, now + 0.08);
+            gain.gain.setValueAtTime(0.09, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start(now);
+            osc.stop(now + 0.08);
+            break;
+          }
+          case 'explosion': {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(110, now);
+            osc.frequency.exponentialRampToValueAtTime(15, now + 0.4);
+            gain.gain.setValueAtTime(0.25, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start(now);
+            osc.stop(now + 0.4);
+            break;
+          }
+          case 'level_up': {
+            const osc1 = audioCtx.createOscillator();
+            const osc2 = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc1.type = 'sine';
+            osc2.type = 'triangle';
+            osc1.frequency.setValueAtTime(262, now);
+            osc1.frequency.setValueAtTime(392, now + 0.12);
+            osc1.frequency.setValueAtTime(523, now + 0.24);
+            osc2.frequency.setValueAtTime(131, now);
+            osc2.frequency.setValueAtTime(262, now + 0.15);
+            osc2.frequency.setValueAtTime(392, now + 0.3);
+            gain.gain.setValueAtTime(0.18, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.45);
+            osc1.connect(gain);
+            osc2.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc1.start(now);
+            osc2.start(now);
+            osc1.stop(now + 0.45);
+            osc2.stop(now + 0.45);
+            break;
+          }
+          case 'boss_spawn': {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(75, now);
+            osc.frequency.linearRampToValueAtTime(35, now + 1.5);
+            gain.gain.setValueAtTime(0.35, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 1.5);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start(now);
+            osc.stop(now + 1.5);
+            break;
+          }
+          case 'absorb': {
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(350, now);
+            osc.frequency.exponentialRampToValueAtTime(950, now + 0.18);
+            gain.gain.setValueAtTime(0.04, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.18);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start(now);
+            osc.stop(now + 0.18);
+            break;
+          }
+        }
+      } catch (e) {
+        console.warn("Audio Context blocked: ", e);
+      }
+    }
+
+    // --- CONTROLS MANAGEMENT ---
+    window.addEventListener('keydown', e => {
+      keys[e.key.toLowerCase()] = true;
+    });
+    window.addEventListener('keyup', e => {
+      keys[e.key.toLowerCase()] = false;
+    });
+
+    // Mute/Unmute Controls
+    const muteBtn = document.getElementById('muteBtn');
+    muteBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      isMuted = !isMuted;
+      if (isMuted) {
+        muteBtn.innerHTML = `
+          <svg style="width: 18px; height: 18px" fill="none" stroke="#f43f5e" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15zM17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"/>
+          </svg>`;
+      } else {
+        muteBtn.innerHTML = `
+          <svg style="width: 18px; height: 18px" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M15.536 8.464a5 5 0 010 7.072M18.364 5.636a9 9 0 010 12.728M12 18.75V5.25L7.75 9.5H4.5v5h3.25L12 18.75z"/>
+          </svg>`;
+        playSound('shoot');
+      }
+    });
+
+    // Button interactions
+    document.getElementById('startBtn').addEventListener('click', () => {
+      initiateGame();
+    });
+
+    document.getElementById('redeployBtn').addEventListener('click', () => {
+      initiateGame();
+    });
+
+    document.getElementById('winAgainBtn').addEventListener('click', () => {
+      // Continue and clean boss
+      gameState = 'PLAYING';
+      lastTime = Date.now();
+      document.getElementById('victoryScreen').classList.add('hidden');
+    });
+
+    // --- GAME RESET ENGINE ---
+    function initiateGame() {
+      // Reset Metrics
+      player.x = worldSize / 2;
+      player.y = worldSize / 2;
+      player.vx = 0;
+      player.vy = 0;
+      player.hp = 100;
+      player.maxHp = 100;
+      player.level = 1;
+      player.xp = 0;
+      player.maxXp = 10;
+      player.rotorAngle = 0;
+      player.angle = 0;
+      player.kills = 0;
+      player.timeElapsed = 0;
+      player.weapons = [
+        { type: 'machine_gun', level: 1, cooldownTimer: 0 }
+      ];
+      player.activeEvolutions = [];
+
+      enemies = [];
+      bullets = [];
+      trails = [];
+      batteries = [];
+      particles = [];
+      frameCount = 0;
+      playerInvincibleTicks = 0;
+      droneOrbitAngle = 0;
+      screenShakeAmt = 0;
+      bossActive = false;
+
+      // Hide screens
+      document.getElementById('startScreen').classList.add('hidden');
+      document.getElementById('gameoverScreen').classList.add('hidden');
+      document.getElementById('victoryScreen').classList.add('hidden');
+      document.getElementById('upgradeScreen').classList.add('hidden');
+
+      playSound('absorb');
+      gameState = 'PLAYING';
+      lastTime = Date.now();
+    }
+
+    // --- PARTICLE BURST SPARK SPAWNER ---
+    function spawnExplosion(x, y, color = '#f97316', count = 8) {
+      for (let i = 0; i < count; i++) {
+        const radians = Math.random() * Math.PI * 2;
+        const velocity = 1.8 + Math.random() * 3.8;
+        particles.push({
+          x: x,
+          y: y,
+          vx: Math.cos(radians) * velocity,
+          vy: Math.sin(radians) * velocity,
+          color: color,
+          size: 3 + Math.random() * 4,
+          life: 1.0,
+          decay: 0.02 + Math.random() * 0.03
+        });
+      }
+    }
+
+    // --- RANDOM UPGRADE CHOOSER ---
+    function triggerLevelUp() {
+      gameState = 'UPGRADE';
+      playSound('level_up');
+      
+      const p = player;
+      const currentWeapons = p.weapons;
+      const options = [];
+
+      const mg = currentWeapons.find(w => w.type === 'machine_gun');
+      const ms = currentWeapons.find(w => w.type === 'homing_missile');
+      const fl = currentWeapons.find(w => w.type === 'flare');
+      const ep = currentWeapons.find(w => w.type === 'evo_pierce');
+      const ed = currentWeapons.find(w => w.type === 'evo_drones');
+
+      // Check qualifications for super weapon evolutions
+      const qualifiesEvoPierce = mg && mg.level === 5 && fl && fl.level === 5 && !ep;
+      const otherWeaponMaxed = (mg && mg.level === 5) || (fl && fl.level === 5) || ep || ed;
+      const qualifiesEvoDrones = ms && ms.level === 5 && otherWeaponMaxed && !ed;
+
+      // 1. Evolution choices
+      if (qualifiesEvoPierce) {
+        options.push({
+          id: 'evo_pierce',
+          type: 'evo_pierce',
+          title: '🔥 燃燒穿甲彈 (Incendiary Pierce)',
+          description: '【超武進化】極速穿透突爆！子彈不限貫穿，並在飛行軌跡撒落持續燃燒2秒的紅蓮火海！',
+          isEvolution: true,
+          badge: 'EVO 進化'
+        });
+      }
+
+      if (qualifiesEvoDrones) {
+        options.push({
+          id: 'evo_drones',
+          type: 'evo_drones',
+          title: '🚀 浮游砲陣列 (Option Drone Array)',
+          description: '【超武進化】解鎖兩架左右護航點陣僚機，每秒自動鎖星射擊迷你跟隨導彈戰術群！',
+          isEvolution: true,
+          badge: 'EVO 進化'
+        });
+      }
+
+      // 2. Base updates
+      if (mg && mg.level < 5) {
+        options.push({
+          id: 'mg_up',
+          type: 'machine_gun',
+          title: `機槍增幅 Lv.${mg.level} -> Lv.${mg.level+1}`,
+          description: mg.level === 4
+            ? '[全彈開火(2管)]：機槍變換為雙股掃射，基礎危害顯著增長'
+            : `縮減每次裝彈間隔與退殼等待時間：冷卻降低 15%`,
+          isEvolution: false,
+          badge: '機槍'
+        });
+      }
+
+      if (!ms) {
+        options.push({
+          id: 'ms_unlock',
+          type: 'homing_missile',
+          title: '解鎖追蹤飛彈',
+          description: '裝配大型熱源制導彈艙。每 3.0秒 朝全場體型或血量最高主機激發定位飛彈。',
+          isEvolution: false,
+          badge: '解鎖'
+        });
+      } else if (ms.level < 5) {
+        options.push({
+          id: 'ms_up',
+          type: 'homing_missile',
+          title: `追蹤飛彈 Lv.${ms.level} -> Lv.${ms.level+1}`,
+          description: ms.level === 4
+            ? '[雙星打擊]：每一次發射週段將同時吐息 2 枚跟隨炸彈'
+            : `加載高威力燃料，增大爆焰波及範圍、發裝冷卻耗時減少`,
+          isEvolution: false,
+          badge: '飛彈'
+        });
+      }
+
+      if (!fl) {
+        options.push({
+          id: 'fl_unlock',
+          type: 'flare',
+          title: '研發制空熱焰彈',
+          description: '安裝側舷灑布管：每 2.5秒 向周遭八向同步撒撒 8 枚浮空防禦高溫攔截熱焰。',
+          isEvolution: false,
+          badge: '解鎖'
+        });
+      } else if (fl.level < 5) {
+        options.push({
+          id: 'fl_up',
+          type: 'flare',
+          title: `熱焰彈 Lv.${fl.level} -> Lv.${fl.level+1}`,
+          description: fl.level === 4
+            ? '[永久防禦]：熱焰在海圖上的點燃生存時間急遽翻長，威懾圈更龐大'
+            : `高溫續燃壽命額外增加 0.5秒，衝擊檢索半徑強化`,
+          isEvolution: false,
+          badge: '熱焰'
+        });
+      }
+
+      // 3. Stat support helpers
+      options.push({
+        id: 'heal',
+        type: 'heal',
+        title: '緊急空中搶修 🔧',
+        description: '派遣基地後勤維補，即刻修復填補戰鬥直升機損傷 HP +50 點。',
+        isEvolution: false,
+        badge: '補給'
+      });
+
+      options.push({
+        id: 'max_hp',
+        type: 'max_hp',
+        title: '鋪載外防硬裝甲 🛡️',
+        description: '提昇結構上限 HP極值額外增加 20 點，並補滿直升機健康體徵。',
+        isEvolution: false,
+        badge: '體系'
+      });
+
+      // Filter and randomize choices (3 items)
+      options.sort(() => 0.5 - Math.random());
+      const selectedOpts = [];
+      const evos = options.filter(x => x.isEvolution);
+      const ordinary = options.filter(x => !x.isEvolution);
+
+      selectedOpts.push(...evos);
+      while(selectedOpts.length < 3 && ordinary.length > 0) {
+        selectedOpts.push(ordinary.shift());
+      }
+
+      const grid = document.getElementById('upgradeGrid');
+      grid.innerHTML = '';
+
+      selectedOpts.slice(0, 3).forEach(opt => {
+        const card = document.createElement('div');
+        card.className = `upgrade-card ${opt.isEvolution ? 'evolution' : ''}`;
+        
+        let iconHtml = '🔧';
+        if (opt.type === 'machine_gun') iconHtml = '🔫';
+        if (opt.type === 'homing_missile') iconHtml = '🎯';
+        if (opt.type === 'flare') iconHtml = '☀️';
+        if (opt.type === 'evo_pierce') iconHtml = '🔥';
+        if (opt.type === 'evo_drones') iconHtml = '🚀';
+        if (opt.type === 'max_hp') iconHtml = '🛡️';
+
+        card.innerHTML = `
+          <span class="upgrade-badge ${opt.isEvolution ? 'badge-evo' : 'badge-std'}">${opt.badge}</span>
+          <div class="upgrade-icon">${iconHtml}</div>
+          <div class="upgrade-title">${opt.title}</div>
+          <div class="upgrade-desc">${opt.description}</div>
+        `;
+
+        card.addEventListener('click', () => {
+          applyUpgrade(opt);
+        });
+
+        grid.appendChild(card);
+      });
+
+      document.getElementById('upgradeScreen').classList.remove('hidden');
+    }
+
+    function applyUpgrade(opt) {
+      const p = player;
+      
+      switch (opt.type) {
+        case 'machine_gun': {
+          const mg = p.weapons.find(w => w.type === 'machine_gun');
+          if (mg) mg.level++;
+          else p.weapons.push({ type: 'machine_gun', level: 1, cooldownTimer: 0 });
+          break;
+        }
+        case 'homing_missile': {
+          const ms = p.weapons.find(w => w.type === 'homing_missile');
+          if (ms) ms.level++;
+          else p.weapons.push({ type: 'homing_missile', level: 1, cooldownTimer: 0 });
+          break;
+        }
+        case 'flare': {
+          const fl = p.weapons.find(w => w.type === 'flare');
+          if (fl) fl.level++;
+          else p.weapons.push({ type: 'flare', level: 1, cooldownTimer: 0 });
+          break;
+        }
+        case 'evo_pierce': {
+          // Replace MachineGun & Flares, merge into Super Incendiary Pierce
+          p.weapons = p.weapons.filter(x => x.type !== 'machine_gun' && x.type !== 'flare');
+          p.weapons.push({ type: 'evo_pierce', level: 6, cooldownTimer: 0 });
+          p.activeEvolutions.push('燃燒穿甲彈 🔥');
+          playSound('boss_spawn');
+          break;
+        }
+        case 'evo_drones': {
+          // Merge Homing Missile with options
+          p.weapons = p.weapons.filter(x => x.type !== 'homing_missile');
+          p.weapons.push({ type: 'evo_drones', level: 6, cooldownTimer: 0 });
+          p.activeEvolutions.push('浮游砲陣列 🚀');
+          playSound('boss_spawn');
+          break;
+        }
+        case 'heal': {
+          p.hp = Math.min(p.maxHp, p.hp + 50);
+          break;
+        }
+        case 'max_hp': {
+          p.maxHp += 20;
+          p.hp = p.maxHp;
+          break;
+        }
+      }
+
+      // Hide screens and resume
+      document.getElementById('upgradeScreen').classList.add('hidden');
+      gameState = 'PLAYING';
+      lastTime = Date.now();
+    }
+
+    // --- MAIN CORE GAME RENDER TICK LOOP ---
+    function updateEngine() {
+      if (gameState !== 'PLAYING') {
+        requestAnimationFrame(updateEngine);
+        return;
+      }
+
+      // Frame time difference
+      const curTime = Date.now();
+      const deltaTime = Math.min(0.1, (curTime - lastTime) / 1000);
+      lastTime = curTime;
+
+      frameCount++;
+      player.timeElapsed += deltaTime;
+
+      if (playerInvincibleTicks > 0) playerInvincibleTicks--;
+
+      // Rotors spinning rate (cosmetic blade line rotation)
+      player.rotorAngle += 0.45;
+      droneOrbitAngle += 0.04;
+
+      // Shake decaying
+      if (screenShakeAmt > 0.1) screenShakeAmt *= 0.88;
+      else screenShakeAmt = 0;
+
+      // --- 1. PLAYER INERTIAL WASD DRIFT SLIDES ---
+      const acceleration = 1.1;
+      const friction = 0.90; // drag slide
+      let wishAx = 0;
+      let wishAy = 0;
+
+      if (keys['w'] || keys['arrowup']) wishAy -= acceleration;
+      if (keys['s'] || keys['arrowdown']) wishAy += acceleration;
+      if (keys['a'] || keys['arrowleft']) wishAx -= acceleration;
+      if (keys['d'] || keys['arrowright']) wishAx += acceleration;
+
+      player.vx += wishAx;
+      player.vy += wishAy;
+
+      // drag weight logic
+      player.vx *= friction;
+      player.vy *= friction;
+
+      // Clamp velocities to max speed threshold
+      const maxSpd = 5.0;
+      const currentSpd = Math.hypot(player.vx, player.vy);
+      if (currentSpd > maxSpd) {
+        player.vx = (player.vx / currentSpd) * maxSpd;
+        player.vy = (player.vy / currentSpd) * maxSpd;
+      }
+
+      player.x += player.vx;
+      player.y += player.vy;
+
+      // Boundary clamp
+      if (player.x < player.radius) { player.x = player.radius; player.vx = 0; }
+      if (player.x > worldSize - player.radius) { player.x = worldSize - player.radius; player.vx = 0; }
+      if (player.y < player.radius) { player.y = player.radius; player.vy = 0; }
+      if (player.y > worldSize - player.radius) { player.y = worldSize - player.radius; player.vy = 0; }
+
+      // Blade tilt cosmetic bank
+      if (Math.abs(player.vx) > 0.15) {
+        player.angle = player.vx * 0.035;
+      } else {
+        player.angle *= 0.8;
+      }
+
+      // Blade exhaust tail embers visual particles
+      if (frameCount % 4 === 0 && (Math.abs(player.vx) > 0.8 || Math.abs(player.vy) > 0.8)) {
+        const backDir = Math.atan2(player.vy, player.vx) + Math.PI;
+        particles.push({
+          x: player.x - Math.cos(backDir) * 10,
+          y: player.y - Math.sin(backDir) * 10,
+          vx: Math.cos(backDir + (Math.random() - 0.5) * 0.4) * (2 + Math.random() * 2) - player.vx * 0.1,
+          vy: Math.sin(backDir + (Math.random() - 0.5) * 0.4) * (2 + Math.random() * 2) - player.vy * 0.1,
+          color: Math.random() > 0.4 ? '#fb923c' : '#fbbf24',
+          size: 2 + Math.random() * 3,
+          life: 0.8,
+          decay: 0.05
+        });
+      }
+
+      // --- 2. FOES SPAWNER TIMERS & STOCHASTIC OVERTIME ENHANCEMENTS ---
+      // Waves increase spawning speed every 30 seconds
+      const secondsPassed = player.timeElapsed;
+      const spawnFrequencyTicks = Math.max(25, 60 - Math.floor(secondsPassed / 30) * 8);
+      const spawnMaxLimit = 220 + Math.floor(secondsPassed / 10) * 15;
+
+      if (frameCount % spawnFrequencyTicks === 0 && enemies.length < spawnMaxLimit) {
+        const countToSpawn = 2 + Math.floor(secondsPassed / 40);
+        for (let i = 0; i < countToSpawn; i++) {
+          const spawnAngle = Math.random() * Math.PI * 2;
+          const distOffset = 450 + Math.random() * 100;
+          const enemyX = player.x + Math.cos(spawnAngle) * distOffset;
+          const enemyY = player.y + Math.sin(spawnAngle) * distOffset;
+
+          // Assure within map borders
+          if (enemyX > 20 && enemyX < worldSize - 20 && enemyY > 20 && enemyY < worldSize - 20) {
+            const dice = Math.random();
+            let type = 'drone';
+            let hp = 14 + Math.floor(secondsPassed / 20) * 4;
+            let speed = 1.35 + Math.random() * 0.4;
+            let wd = 16, ht = 16, score = 10;
+
+            if (dice > 0.85) {
+              type = 'shield_drone';
+              hp = 42 + Math.floor(secondsPassed / 20) * 10;
+              speed = 0.8;
+              wd = 22; ht = 22; score = 30;
+            } else if (dice > 0.65) {
+              type = 'fast_drone';
+              hp = 6 + Math.floor(secondsPassed / 30) * 2;
+              speed = 2.4;
+              wd = 12; ht = 12; score = 20;
+            }
+
+            enemies.push({
+              x: enemyX,
+              y: enemyY,
+              vx: 0, vy: 0,
+              width: wd, height: ht,
+              speed: speed,
+              hp: hp, maxHp: hp,
+              type: type,
+              scoreValue: score,
+              hitFlashTicks: 0
+            });
+          }
+        }
+      }
+
+      // 120 Seconds Trigger - Extreme Supreme Giant Bomber Boss
+      if (secondsPassed >= 120 && !bossActive && !enemies.some(e => e.type === 'boss')) {
+        bossActive = true;
+        playSound('boss_spawn');
+        enemies.push({
+          x: player.x,
+          y: player.y - 300,
+          vx: 0, vy: 0,
+          width: 90, height: 50,
+          speed: 0.65,
+          hp: 1400, maxHp: 1400,
+          type: 'boss',
+          scoreValue: 1000,
+          hitFlashTicks: 0
+        });
+      }
+
+      // --- 3. AUTO PROJECTILES WEAPON DIRECTORIES TRIGGER ---
+      player.weapons.forEach(w => {
+        w.cooldownTimer -= deltaTime;
+        if (w.cooldownTimer <= 0) {
+          if (enemies.length === 0) return;
+
+          switch (w.type) {
+            case 'machine_gun': {
+              const mgIntervals = [0.5, 0.45, 0.4, 0.35, 0.3];
+              const mgDmgScale = [11, 16, 22, 28, 35];
+              const lvlIdx = Math.min(mgIntervals.length - 1, w.level - 1);
+
+              // Target nearest enemy
+              let nearest = null;
+              let nearestDist = Infinity;
+              enemies.forEach(e => {
+                const dst = Math.hypot(e.x - player.x, e.y - player.y);
+                if (dst < nearestDist) {
+                  nearestDist = dst;
+                  nearest = e;
+                }
+              });
+
+              if (nearest && nearestDist < 500) {
+                const targetAngle = Math.atan2(nearest.y - player.y, nearest.x - player.x);
+                const bSpeed = 9.5;
+
+                // Level 5 fires dual spread shells!
+                if (w.level === 5) {
+                  const split = 0.08;
+                  const angles = [targetAngle - split, targetAngle + split];
+                  angles.forEach(ang => {
+                    bullets.push({
+                      x: player.x,
+                      y: player.y,
+                      vx: Math.cos(ang) * bSpeed,
+                      vy: Math.sin(ang) * bSpeed,
+                      radius: 3.5,
+                      damage: mgDmgScale[lvlIdx],
+                      type: 'player_basic',
+                      penetration: 1
+                    });
+                  });
+                } else {
+                  bullets.push({
+                    x: player.x,
+                    y: player.y,
+                    vx: Math.cos(targetAngle) * bSpeed,
+                    vy: Math.sin(targetAngle) * bSpeed,
+                    radius: 3.5,
+                    damage: mgDmgScale[lvlIdx],
+                    type: 'player_basic',
+                    penetration: 1
+                  });
+                }
+
+                playSound('shoot');
+                w.cooldownTimer = mgIntervals[lvlIdx];
+              }
+              break;
+            }
+
+            case 'homing_missile': {
+              const msIntervals = [3.0, 2.7, 2.4, 2.1, 1.8];
+              const msDmgScale = [35, 45, 55, 65, 80];
+              const lvlIdx = Math.min(msIntervals.length - 1, w.level - 1);
+
+              // Target highest HP
+              const sortedHpEnemies = [...enemies].sort((a,b) => b.hp - a.hp);
+              const targetedList = [];
+              if (sortedHpEnemies.length > 0) {
+                targetedList.push(sortedHpEnemies[0]);
+                if (w.level === 5 && sortedHpEnemies.length > 1) {
+                  targetedList.push(sortedHpEnemies[1]);
+                }
+              }
+
+              targetedList.forEach(tar => {
+                const targetAngle = Math.atan2(tar.y - player.y, tar.x - player.x);
+                bullets.push({
+                  x: player.x,
+                  y: player.y,
+                  vx: Math.cos(targetAngle) * 6.5,
+                  vy: Math.sin(targetAngle) * 6.5,
+                  radius: 5.5,
+                  damage: msDmgScale[lvlIdx],
+                  type: 'player_missile',
+                  penetration: 1,
+                  angle: targetAngle
+                });
+              });
+
+              if (targetedList.length > 0) {
+                playSound('missile');
+                w.cooldownTimer = msIntervals[lvlIdx];
+              }
+              break;
+            }
+
+            case 'flare': {
+              const flIntervals = [2.5, 2.5, 2.3, 2.3, 2.0];
+              const flDmgScale = [12, 18, 25, 32, 45];
+              const flLingerScale = [1.0, 1.5, 1.5, 2.0, 3.5];
+              const lvlIdx = Math.min(flIntervals.length - 1, w.level - 1);
+
+              const numFlares = (w.level >= 3) ? 10 : 8;
+              const unitAngle = (Math.PI * 2) / numFlares;
+              const fSpeed = 3.6;
+
+              for (let i = 0; i < numFlares; i++) {
+                const flareAngle = i * unitAngle;
+                bullets.push({
+                  x: player.x,
+                  y: player.y,
+                  vx: Math.cos(flareAngle) * fSpeed,
+                  vy: Math.sin(flareAngle) * fSpeed,
+                  radius: (w.level >= 4) ? 9 : 6.5,
+                  damage: flDmgScale[lvlIdx],
+                  type: 'player_flare',
+                  penetration: 8,
+                  duration: flLingerScale[lvlIdx]
+                });
+              }
+
+              playSound('flare');
+              w.cooldownTimer = flIntervals[lvlIdx];
+              break;
+            }
+
+            case 'evo_pierce': {
+              // Formula 1 - Incendiary Pierce (🔥 燃燒穿甲彈)
+              // Highly dense, infinite pierce beams dropping wildfire
+              let nearest = null;
+              let nearestDist = Infinity;
+              enemies.forEach(e => {
+                const dst = Math.hypot(e.x - player.x, e.y - player.y);
+                if (dst < nearestDist) {
+                  nearestDist = dst;
+                  nearest = e;
+                }
+              });
+
+              if (nearest && nearestDist < 500) {
+                const wobble = (Math.random() - 0.5) * 0.15;
+                const targetAngle = Math.atan2(nearest.y - player.y, nearest.x - player.x) + wobble;
+                const bSpeed = 12.0;
+
+                bullets.push({
+                  x: player.x,
+                  y: player.y,
+                  vx: Math.cos(targetAngle) * bSpeed,
+                  vy: Math.sin(targetAngle) * bSpeed,
+                  radius: 5.5,
+                  damage: 35,
+                  type: 'player_evo_pierce',
+                  penetration: 999, // Infinite pierce!
+                  trailTimer: 0.05
+                });
+
+                playSound('shoot');
+                w.cooldownTimer = 0.11; // 110ms fire rate!
+              }
+              break;
+            }
+
+            case 'evo_drones': {
+              // Formula 2 - Option Drone Array (🚀 浮游砲陣列)
+              // 2 option drones circle around player. Every 1.0 second they shoot homing micro missiles!
+              const sortedHpEnemies = [...enemies].sort((a,b) => Math.hypot(a.x - player.x, a.y - player.y) - Math.hypot(b.x - player.x, b.y - player.y));
+              
+              if (sortedHpEnemies.length > 0) {
+                const dDelta = 45;
+                const drone1_X = player.x + Math.cos(droneOrbitAngle) * dDelta;
+                const drone1_Y = player.y + Math.sin(droneOrbitAngle) * dDelta;
+                const drone2_X = player.x + Math.cos(droneOrbitAngle + Math.PI) * dDelta;
+                const drone2_Y = player.y + Math.sin(droneOrbitAngle + Math.PI) * dDelta;
+
+                const nodes = [
+                  { x: drone1_X, y: drone1_Y, target: sortedHpEnemies[0] },
+                  { x: drone2_X, y: drone2_Y, target: sortedHpEnemies[1] || sortedHpEnemies[0] }
+                ];
+
+                nodes.forEach(nd => {
+                  const targetAngle = Math.atan2(nd.target.y - nd.y, nd.target.x - nd.x);
+                  bullets.push({
+                    x: nd.x,
+                    y: nd.y,
+                    vx: Math.cos(targetAngle) * 7.5,
+                    vy: Math.sin(targetAngle) * 7.5,
+                    radius: 3.5,
+                    damage: 24,
+                    type: 'player_missile', // homing visual
+                    penetration: 1,
+                    angle: targetAngle
+                  });
+                });
+
+                playSound('missile');
+                w.cooldownTimer = 1.0;
+              }
+              break;
+            }
+          }
+        }
+      });
+
+      // --- 4. PROJECTILES PHYSICS & COLLISIONS ON TARGETS ---
+      for (let bIdx = bullets.length - 1; bIdx >= 0; bIdx--) {
+        const b = bullets[bIdx];
+
+        // Flare Deceles & Shrinks
+        if (b.type === 'player_flare' && b.duration !== undefined) {
+          b.duration -= deltaTime;
+          b.vx *= 0.93;
+          b.vy *= 0.93;
+
+          if (frameCount % 4 === 0) {
+            particles.push({
+              x: b.x + (Math.random() - 0.5) * 6,
+              y: b.y + (Math.random() - 0.5) * 6,
+              vx: (Math.random() - 0.5) * 1.5,
+              vy: (Math.random() - 0.5) * 1.5,
+              color: '#fb923c',
+              size: 2,
+              life: 0.7,
+              decay: 0.08
+            });
+          }
+
+          if (b.duration <= 0) {
+            bullets.splice(bIdx, 1);
+            continue;
+          }
+        }
+
+        // Evo Pierce Fire trail dropping
+        if (b.type === 'player_evo_pierce' && b.trailTimer !== undefined) {
+          b.trailTimer -= deltaTime;
+          if (b.trailTimer <= 0) {
+            b.trailTimer = 0.08;
+            trails.push({
+              x: b.x,
+              y: b.y,
+              radius: 18,
+              damage: 6,
+              duration: 2.2, // linger burns
+              maxDuration: 2.2
+            });
+          }
+        }
+
+        b.x += b.vx;
+        b.y += b.vy;
+
+        // Despawn bullet if drifted way out
+        const pDist = Math.hypot(b.x - player.x, b.y - player.y);
+        if (pDist > 750) {
+          bullets.splice(bIdx, 1);
+          continue;
+        }
+
+        // Verify collision index on enemies
+        let destroyed = false;
+        for (let eIdx = enemies.length - 1; eIdx >= 0; eIdx--) {
+          const e = enemies[eIdx];
+          const collisionDst = Math.hypot(b.x - e.x, b.y - e.y);
+          const hitThresh = Math.max(e.width, e.height) / 1.5 + b.radius;
+
+          if (collisionDst < hitThresh) {
+            e.hp -= b.damage;
+            e.hitFlashTicks = 3;
+            playSound('hit');
+
+            // Quick spark hit particles
+            particles.push({
+              x: b.x,
+              y: b.y,
+              vx: (Math.random() - 0.5) * 4,
+              vy: (Math.random() - 0.5) * 4,
+              color: '#fef08a',
+              size: 2.5,
+              life: 0.5,
+              decay: 0.1
+            });
+
+            // Missiles exploding Aoe Blast
+            if (b.type === 'player_missile') {
+              screenShakeAmt = Math.min(10, screenShakeAmt + 4.5);
+              playSound('explosion');
+
+              const explodeRadius = 75;
+              enemies.forEach(o => {
+                const subDst = Math.hypot(o.x - b.x, o.y - b.y);
+                if (subDst < explodeRadius) {
+                  o.hp -= b.damage * 0.75;
+                  o.hitFlashTicks = 3;
+                }
+              });
+
+              spawnExplosion(b.x, b.y, '#f97316', 15);
+              destroyed = true;
+            }
+
+            b.penetration--;
+            if (b.penetration <= 0) {
+              destroyed = true;
+              bullets.splice(bIdx, 1);
+              break; // bullet dead, leave inner loop
+            }
+          }
+        }
+      }
+
+      // --- 5. LINGERING AREA FIRE TRAILS BURNING OVERTIME ---
+      for (let tIdx = trails.length - 1; tIdx >= 0; tIdx--) {
+        const tr = trails[tIdx];
+        tr.duration -= deltaTime;
+
+        // Check burn damage overlap every 10 frames
+        if (frameCount % 10 === 0) {
+          enemies.forEach(e => {
+            if (Math.hypot(e.x - tr.x, e.y - tr.y) < tr.radius + e.width / 2) {
+              e.hp -= tr.damage;
+              e.hitFlashTicks = 2;
+            }
+          });
+        }
+
+        if (tr.duration <= 0) {
+          trails.splice(tIdx, 1);
+        }
+      }
+
+      // --- 6. ENEMIES DISMANTLING, COMPAT AI TRACK & THREATS TO PLAYER ---
+      for (let eIdx = enemies.length - 1; eIdx >= 0; eIdx--) {
+        const e = enemies[eIdx];
+
+        if (e.hp <= 0) {
+          player.kills++;
+          
+          // Refresh peak high record live
+          if (player.kills > highKills) {
+            highKills = player.kills;
+            try {
+              localStorage.setItem('helicopter_high_score', highKills.toString());
+            } catch (err) {}
+          }
+
+          const explodeColor = e.type === 'boss' ? '#a855f7' : (e.type === 'shield_drone' ? '#64748b' : '#f43f5e');
+          spawnExplosion(e.x, e.y, explodeColor, e.type === 'boss' ? 45 : 8);
+          playSound('explosion');
+
+          screenShakeAmt = Math.min(12, screenShakeAmt + (e.type === 'boss' ? 12 : 1.5));
+
+          // Boss Crash down victory trigger
+          if (e.type === 'boss') {
+            bossActive = false;
+            // Spawn huge battery item
+            batteries.push({ x: e.x, y: e.y, xpValue: 40 });
+            
+            // Victory trigger UI screens transition
+            triggerVictoryState();
+            enemies.splice(eIdx, 1);
+            continue;
+          } else {
+            // Standard power gem drops
+            if (Math.random() > 0.15) {
+              batteries.push({
+                x: e.x,
+                y: e.y,
+                xpValue: e.type === 'shield_drone' ? 3 : 1,
+                magnetic: false
+              });
+            }
+          }
+
+          enemies.splice(eIdx, 1);
+          continue;
+        }
+
+        if (e.hitFlashTicks > 0) e.hitFlashTicks--;
+
+        // Tracker tracking logic
+        const dx = player.x - e.x;
+        const dy = player.y - e.y;
+        const distToPlayer = Math.hypot(dx, dy);
+
+        if (distToPlayer > 1) {
+          e.vx = (dx / distToPlayer) * e.speed;
+          e.vy = (dy / distToPlayer) * e.speed;
+        }
+
+        e.x += e.vx;
+        e.y += e.vy;
+
+        // Custom Bomber Boss support fighter escorts spawner
+        if (e.type === 'boss' && frameCount % 125 === 0) {
+          const escAngle = Math.random() * Math.PI * 2;
+          enemies.push({
+            x: e.x + Math.cos(escAngle) * 60,
+            y: e.y + Math.sin(escAngle) * 60,
+            vx: 0, vy: 0,
+            width: 14, height: 14,
+            speed: 2.1,
+            hp: 20, maxHp: 20,
+            type: 'fast_drone',
+            scoreValue: 15,
+            hitFlashTicks: 0
+          });
+          spawnExplosion(e.x, e.y, '#e879f9', 4);
+        }
+
+        // TOUCHING DAMAGE THE PLAYER HELICOPTER
+        if (distToPlayer < player.radius + Math.max(e.width, e.height) / 2.2) {
+          if (playerInvincibleTicks <= 0) {
+            const rawDmg = e.type === 'boss' ? 24 : (e.type === 'shield_drone' ? 15 : 8);
+            player.hp = Math.max(0, player.hp - rawDmg);
+            playerInvincibleTicks = 30; // 0.5s shield lock
+
+            playSound('hit');
+            screenShakeAmt = Math.min(10, screenShakeAmt + 5.5);
+            spawnExplosion(player.x, player.y, '#f43f5e', 8);
+
+            if (player.hp <= 0) {
+              triggerGameOverState();
+              return;
+            }
+          }
+        }
+      }
+
+      // --- 7. REVOLVING FUEL ENERGY XP BATTERY MAGNET TRAILING ---
+      for (let bIdx = batteries.length - 1; bIdx >= 0; bIdx--) {
+        const bat = batteries[bIdx];
+        const dist = Math.hypot(player.x - bat.x, player.y - bat.y);
+
+        const runMagnetRange = 60; // 50px-60px active magnetic pull as requested!
+        if (dist < runMagnetRange || bat.magnetic) {
+          bat.magnetic = true;
+
+          const speed = 10.5;
+          const pullAngle = Math.atan2(player.y - bat.y, player.x - bat.x);
+          bat.x += Math.cos(pullAngle) * speed;
+          bat.y += Math.sin(pullAngle) * speed;
+
+          if (dist < 15) {
+            player.xp += bat.xpValue;
+            playSound('absorb');
+
+            // quick pop spark particle
+            particles.push({
+              x: player.x,
+              y: player.y,
+              vx: (Math.random() - 0.5) * 1.5,
+              vy: (Math.random() - 0.5) * 1.5,
+              color: '#4ade80',
+              size: 2,
+              life: 0.5,
+              decay: 0.1
+            });
+
+            // Level up checks
+            if (player.xp >= player.maxXp) {
+              player.level++;
+              player.xp -= player.maxXp;
+              player.maxXp = Math.floor(10 + player.level * 8);
+
+              triggerLevelUp();
+            }
+
+            batteries.splice(bIdx, 1);
+            continue;
+          }
+        }
+      }
+
+      // --- 8. GRAPHICAL EXPLOSION SMOKES DUST ---
+      for (let pIdx = particles.length - 1; pIdx >= 0; pIdx--) {
+        const pt = particles[pIdx];
+        pt.x += pt.vx;
+        pt.y += pt.vy;
+        pt.life -= pt.decay;
+
+        if (pt.life <= 0) {
+          particles.splice(pIdx, 1);
+        }
+      }
+
+      // --- 9. DRAW CANVAS GRAPHICS LAYOUTS ---
+      // Configure central camera focus tracking
+      const camX = player.x - 400;
+      const camY = player.y - 300;
+
+      ctx.save();
+      // Apply screenshake translate shifts
+      if (screenShakeAmt > 0.1) {
+        const sx = (Math.random() - 0.5) * screenShakeAmt;
+        const sy = (Math.random() - 0.5) * screenShakeAmt;
+        ctx.translate(sx, sy);
+      }
+
+      ctx.clearRect(0,0,800,600);
+      
+      // Black slate combat ground
+      ctx.fillStyle = '#0a0d13';
+      ctx.fillRect(0,0,800,600);
+
+      // Radial tactical grid lattice
+      ctx.strokeStyle = '#181f2b';
+      ctx.lineWidth = 1;
+      const gridDensity = 50;
+      const startX = Math.floor(camX / gridDensity) * gridDensity;
+      const startY = Math.floor(camY / gridDensity) * gridDensity;
+
+      for (let x = startX - gridDensity; x < startX + 800 + gridDensity; x += gridDensity) {
+        ctx.beginPath();
+        ctx.moveTo(x - camX, 0);
+        ctx.lineTo(x - camX, 600);
+        ctx.stroke();
+      }
+      for (let y = startY - gridDensity; y < startY + 600 + gridDensity; y += gridDensity) {
+        ctx.beginPath();
+        ctx.moveTo(0, y - camY);
+        ctx.lineTo(800, y - camY);
+        ctx.stroke();
+      }
+
+      // Drawing World Warning Barrier bounds
+      ctx.strokeStyle = '#f43f5e';
+      ctx.lineWidth = 4;
+      ctx.strokeRect(-camX, -camY, worldSize, worldSize);
+
+      // Radar circles
+      ctx.strokeStyle = 'rgba(34, 197, 94, 0.05)';
+      ctx.beginPath();
+      ctx.arc(worldSize/2 - camX, worldSize/2 - camY, 600, 0, Math.PI*2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(worldSize/2 - camX, worldSize/2 - camY, 1100, 0, Math.PI*2);
+      ctx.stroke();
+
+      // DRAW AREA INCENDIARY BURNING RESIDUES
+      trails.forEach(tr => {
+        const tx = tr.x - camX;
+        const ty = tr.y - camY;
+        const ratio = tr.duration / tr.maxDuration;
+
+        ctx.beginPath();
+        ctx.arc(tx, ty, tr.radius * (0.85 + Math.random() * 0.3), 0, Math.PI*2);
+        
+        const grad = ctx.createRadialGradient(tx, ty, 2, tx, ty, tr.radius);
+        grad.addColorStop(0, 'rgba(25efca8a,240,138,0.9)'); 
+        grad.addColorStop(0.3, 'rgba(249,115,22,0.75)');
+        grad.addColorStop(1, 'rgba(239,68,68,0)');
+        
+        ctx.fillStyle = grad;
+        ctx.fill();
+
+        // mini pixel coals
+        ctx.fillStyle = Math.random() > 0.5 ? '#f97316' : '#ef4444';
+        for (let i = 0; i < 4; i++) {
+          const px = tx + (Math.random() - 0.5) * tr.radius;
+          const py = ty + (Math.random() - 0.5) * tr.radius;
+          const sz = 1.5 + Math.random() * 3;
+          ctx.fillRect(px - sz/2, py - sz/2, sz, sz);
+        }
+      });
+
+      // DRAW COLLECTIBLE GREEN BATTERY REVOLVERS
+      batteries.forEach(b => {
+        const bx = b.x - camX;
+        const by = b.y - camY;
+        
+        // draw custom battery outline
+        ctx.fillStyle = '#4ade80';
+        ctx.fillRect(bx - 4, by - 5, 8, 10);
+        // glowing tip
+        ctx.fillStyle = '#22c55e';
+        ctx.fillRect(bx - 2, by - 7, 4, 2);
+        // glowing inner power
+        if (frameCount % 10 < 5) {
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(bx - 2, by - 3, 4, 6);
+        }
+      });
+
+      // DRAW VEHICLE BULLETS
+      bullets.forEach(b => {
+        const bx = b.x - camX;
+        const by = b.y - camY;
+
+        if (b.type === 'player_basic') {
+          ctx.fillStyle = '#22c55e';
+          ctx.fillRect(bx - 3, by - 3, 6, 6);
+        } else if (b.type === 'player_missile') {
+          // Pointy head
+          ctx.save();
+          ctx.translate(bx, by);
+          ctx.rotate(b.angle || 0);
+
+          ctx.fillStyle = '#3b82f6'; // steel blue missile length
+          ctx.fillRect(-8, -4, 12, 8);
+          // orange rocket fire
+          ctx.fillStyle = '#eab308';
+          ctx.fillRect(-12, -2, 4, 4);
+
+          ctx.restore();
+        } else if (b.type === 'player_flare') {
+          ctx.beginPath();
+          ctx.arc(bx, by, b.radius, 0, Math.PI*2);
+          const fGrad = ctx.createRadialGradient(bx, by, 1, bx, by, b.radius);
+          fGrad.addColorStop(0, '#ffffff');
+          fGrad.addColorStop(0.3, '#38bdf8'); // hyper blue core
+          fGrad.addColorStop(1, 'rgba(56,189,248,0)');
+          ctx.fillStyle = fGrad;
+          ctx.fill();
+        } else if (b.type === 'player_evo_pierce') {
+          // crimson bolts
+          ctx.fillStyle = '#ef4444';
+          ctx.fillRect(bx - 4, by - 4, 8, 8);
+          ctx.fillStyle = '#fdba74';
+          ctx.fillRect(bx - 2, by - 2, 4, 4);
+        }
+      });
+
+      // DRAW MOB ENEMIES
+      enemies.forEach(e => {
+        const ex = e.x - camX;
+        const ey = e.y - camY;
+
+        if (e.hitFlashTicks > 0) {
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(ex - e.width/2, ey - e.height/2, e.width, e.height);
+          return;
+        }
+
+        switch (e.type) {
+          case 'drone': {
+            // standard red square tracking drone
+            ctx.fillStyle = '#f43f5e';
+            ctx.fillRect(ex - e.width/2, ey - e.height/2, e.width, e.height);
+            // inner metal core indicator
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(ex - 4, ey - 4, 8, 8);
+            // scanning red eye
+            ctx.fillStyle = '#f43f5e';
+            ctx.fillRect(ex - 1, ey - 1, 2, 2);
+            break;
+          }
+          case 'fast_drone': {
+            // tiny swift orange bug drones
+            ctx.fillStyle = '#f97316';
+            ctx.beginPath();
+            ctx.moveTo(ex, ey - 7);
+            ctx.lineTo(ex + 6, ey + 5);
+            ctx.lineTo(ex - 6, ey + 5);
+            ctx.closePath();
+            ctx.fill();
+            break;
+          }
+          case 'shield_drone': {
+            // armored tanky shield drone with peripheral protection arc
+            ctx.strokeStyle = '#475569';
+            ctx.lineWidth = 3;
+            // Draw protective shield orbits
+            ctx.beginPath();
+            ctx.arc(ex, ey, 14, 0, Math.PI*2);
+            ctx.stroke();
+
+            // Core body
+            ctx.fillStyle = '#64748b';
+            ctx.fillRect(ex - 7, ey - 7, 14, 14);
+            ctx.fillStyle = '#334155';
+            ctx.fillRect(ex - 4, ey - 4, 8, 8);
+            ctx.fillStyle = '#ef4444';
+            ctx.fillRect(ex - 1, ey - 1, 2, 2);
+            break;
+          }
+          case 'boss': {
+            // Giant Bomber aircraft pixel geometry
+            // Wings
+            ctx.fillStyle = '#1e1b4b';
+            ctx.fillRect(ex - 45, ey - 10, 90, 16);
+            ctx.fillStyle = '#312e81';
+            ctx.fillRect(ex - 35, ey - 6, 70, 8);
+
+            // Command module core fuselage
+            ctx.fillStyle = '#4c1d95';
+            ctx.fillRect(ex - 15, ey - 22, 30, 44);
+            ctx.fillStyle = '#818cf8';
+            ctx.fillRect(ex - 6, ey - 16, 12, 12); // blue cockpit glass shield
+
+            // Custom rear stabilizer
+            ctx.fillStyle = '#1e1b4b';
+            ctx.fillRect(ex - 22, ey + 20, 44, 6);
+
+            // Heavy thrusters fire emission pixel indicators
+            ctx.fillStyle = frameCount % 10 < 5 ? '#e879f9' : '#f472b6';
+            ctx.fillRect(ex - 25, ey + 6, 6, 5);
+            ctx.fillRect(ex + 19, ey + 6, 6, 5);
+            break;
+          }
+        }
+
+        // Draw little red/green health bars aloft boss plane
+        if (e.type === 'boss') {
+          const barW = 80;
+          ctx.fillStyle = '#ef4444';
+          ctx.fillRect(ex - barW/2, ey - 32, barW, 5);
+          ctx.fillStyle = '#22c55e';
+          const hpRatio = e.hp / e.maxHp;
+          ctx.fillRect(ex - barW/2, ey - 32, barW * hpRatio, 5);
+        }
+      });
+
+      // DRAW EVOLVED EXTRA OPTION DRONES ORBITING HELICOPTER
+      player.weapons.forEach(w => {
+        if (w.type === 'evo_drones') {
+          const orbitRadius = 45;
+          const coords = [
+            { x: player.x + Math.cos(droneOrbitAngle) * orbitRadius, y: player.y + Math.sin(droneOrbitAngle) * orbitRadius },
+            { x: player.x + Math.cos(droneOrbitAngle + Math.PI) * orbitRadius, y: player.y + Math.sin(droneOrbitAngle + Math.PI) * orbitRadius }
+          ];
+
+          coords.forEach(c => {
+            const cx = c.x - camX;
+            const cy = c.y - camY;
+
+            // Draw glowing companion drone circle body
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(cx - 5, cy - 5, 10, 10);
+            ctx.strokeStyle = '#38bdf8';
+            ctx.lineWidth = 1.5;
+            ctx.strokeRect(cx - 5.5, cy - 5.5, 11, 11);
+            // core eye
+            ctx.fillStyle = '#38bdf8';
+            ctx.fillRect(cx - 1.5, cy - 1.5, 3, 3);
+
+            // exhaust tail
+            ctx.fillStyle = frameCount % 8 < 4 ? '#38bdf8' : '#7dd3fc';
+            ctx.fillRect(cx - 1, cy + 5, 2, 3);
+          });
+        }
+      });
+
+      // DRAW SMOKE EXPLOSIONS PARTICLES
+      particles.forEach(pt => {
+        ctx.fillStyle = pt.color;
+        ctx.globalAlpha = pt.life;
+        ctx.fillRect(pt.x - camX - pt.size/2, pt.y - camY - pt.size/2, pt.size, pt.size);
+      });
+      ctx.globalAlpha = 1.0; // reset transparency
+
+      // DRAW COMMAND FIGHTER PLAYER HELICOPTER
+      const px = player.x - camX;
+      const py = player.y - camY;
+
+      ctx.save();
+      ctx.translate(px, py);
+      ctx.rotate(player.angle);
+
+      // Flash white if recently taking hit damage
+      if (playerInvincibleTicks > 0 && playerInvincibleTicks % 6 < 3) {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+        ctx.beginPath();
+        ctx.arc(0, 0, player.radius + 2, 0, Math.PI*2);
+        ctx.fill();
+      }
+
+      // Draw Helicopter fuselage parts
+      // Wing tail boom row
+      ctx.fillStyle = '#1e3a1e'; // dark military green
+      ctx.fillRect(-35, -3, 30, 6);
+      
+      // Vertical tail stabilizer
+      ctx.fillStyle = '#14532d';
+      ctx.fillRect(-35, -12, 4, 12);
+      // Small tail rotor blade line
+      ctx.strokeStyle = '#94a3b8';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      const trAngle = player.rotorAngle * 0.75;
+      ctx.moveTo(-35, -6 - Math.sin(trAngle) * 7);
+      ctx.lineTo(-35, -6 + Math.sin(trAngle) * 7);
+      ctx.stroke();
+
+      // Core Helicopter Cockpit Frame
+      ctx.fillStyle = '#166534';
+      ctx.fillRect(-15, -10, 30, 20); // main cabin block
+      
+      // Front curved noise cone
+      ctx.beginPath();
+      ctx.moveTo(15, -10);
+      ctx.lineTo(26, 0);
+      ctx.lineTo(15, 10);
+      ctx.closePath();
+      ctx.fillStyle = '#166534';
+      ctx.fill();
+
+      // Cool cockpit glass canopy (Blue block)
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(6, -7, 12, 14);
+      ctx.fillStyle = '#e0f2fe';
+      ctx.fillRect(11, -5, 5, 10); // glass shine
+
+      // Side mounts missile launchers launcher pods (cosmetic)
+      ctx.fillStyle = '#334155';
+      ctx.fillRect(-3, -13, 10, 3);
+      ctx.fillRect(-3, 10, 10, 3);
+
+      // Upper rotor shaft mount
+      ctx.fillStyle = '#475569';
+      ctx.fillRect(-2, -14, 4, 4);
+
+      // Rotating Helicopter main upper Rotor Blade Lines!
+      ctx.strokeStyle = '#cbd5e1';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      // Length horizontal projection rotates
+      const bladeX_off = Math.cos(player.rotorAngle) * 38;
+      const bladeY_off = Math.sin(player.rotorAngle) * 8; // squash look vertical for perspective tilt
+      ctx.moveTo(-bladeX_off, -14 - bladeY_off);
+      ctx.lineTo(bladeX_off, -14 + bladeY_off);
+      ctx.stroke();
+
+      // Double rotor offset line
+      ctx.strokeStyle = '#94a3b8';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      const rotAngle2 = player.rotorAngle + Math.PI/2;
+      const bladeX_off2 = Math.cos(rotAngle2) * 38;
+      const bladeY_off2 = Math.sin(rotAngle2) * 8;
+      ctx.moveTo(-bladeX_off2, -14 - bladeY_off2);
+      ctx.lineTo(bladeX_off2, -14 + bladeY_off2);
+      ctx.stroke();
+
+      ctx.restore(); // restore raw translation
+
+      ctx.restore(); // restore screenshake translations
+
+      // --- 10. DRAW ON-SCREEN GRAPHIC HEALTH/XP HUD OVERLAYS ---
+      // Level banner (Top Left HUD)
+      ctx.fillStyle = 'rgba(15, 19, 25, 0.75)';
+      ctx.fillRect(15, 15, 180, 52);
+      ctx.strokeStyle = '#242f3d';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(15, 15, 180, 52);
+
+      ctx.font = 'bold 13px "JetBrains Mono", sans-serif';
+      ctx.fillStyle = '#22c55e';
+      ctx.fillText(`LV. ${player.level} 戰鬥直升機`, 25, 34);
+
+      // XP Progress Bar
+      ctx.fillStyle = 'rgba(74, 222, 128, 0.1)';
+      ctx.fillRect(25, 43, 160, 12);
+      const xpPercent = player.xp / player.maxXp;
+      ctx.fillStyle = '#22c55e';
+      ctx.fillRect(25, 43, 160 * xpPercent, 12);
+      // drawing XP text indicators
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '700 8px Arial';
+      ctx.fillText(`XP: ${player.xp}/${player.maxXp}`, 85, 52);
+
+      // Health HUD Bar under fuselage
+      ctx.fillStyle = 'rgba(244, 63, 94, 0.15)';
+      ctx.fillRect(px - 25, py + 22, 50, 4);
+      ctx.fillStyle = '#22c55e';
+      const playerHpRatio = player.hp / player.maxHp;
+      ctx.fillRect(px - 25, py + 22, 50 * playerHpRatio, 4);
+
+      // On-Canvas general HUD information readouts
+      ctx.fillStyle = 'rgba(15, 19, 25, 0.75)';
+      ctx.fillRect(320, 15, 160, 36);
+      ctx.strokeRect(320, 15, 160, 36);
+      
+      ctx.font = 'bold 15px "JetBrains Mono", sans-serif';
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'center';
+      
+      const minutes = Math.floor(secondsPassed / 60);
+      const seconds = Math.floor(secondsPassed % 60);
+      const timeStr = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+      ctx.fillText(timeStr, 400, 38);
+      ctx.textAlign = 'left'; // restore standard default align
+
+      // Kill Count HUD display (Top Right corner)
+      ctx.fillStyle = 'rgba(15, 19, 25, 0.75)';
+      ctx.fillRect(600, 15, 185, 36);
+      ctx.strokeRect(600, 15, 185, 36);
+      
+      ctx.fillStyle = '#f43f5e';
+      ctx.font = 'bold 11px "JetBrains Mono", sans-serif';
+      ctx.fillText(`🎯 擊毀陸空機群: ${player.kills}`, 615, 37);
+
+      // Active super evolved blueprints list (Fading Bottom left)
+      if (player.activeEvolutions.length > 0) {
+        ctx.fillStyle = 'rgba(17, 24, 39, 0.7)';
+        ctx.fillRect(15, 530, 240, 48);
+        ctx.strokeStyle = '#a855f7';
+        ctx.strokeRect(15, 530, 240, 48);
+        ctx.fillStyle = '#d8b4fe';
+        ctx.font = '800 11px Arial';
+        ctx.fillText(`🔥 科技進化完成:`, 25, 547);
+        ctx.fillText(player.activeEvolutions.join(', '), 25, 565);
+      }
+
+      // Draw Top BOSS health progress alert bar if active
+      if (bossActive) {
+        const bossEntity = enemies.find(e => e.type === 'boss');
+        if (bossEntity) {
+          ctx.fillStyle = 'rgba(17, 24, 39, 0.8)';
+          ctx.fillRect(150, 80, 500, 24);
+          ctx.strokeStyle = '#e9bcff';
+          ctx.strokeRect(150, 80, 500, 24);
+
+          const hpPct = bossEntity.hp / bossEntity.maxHp;
+          ctx.fillStyle = 'linear-gradient(90deg, #c084fc, #7e22ce)';
+          // Gradient fill
+          const grabGrad = ctx.createLinearGradient(150, 80, 650, 80);
+          grabGrad.addColorStop(0, '#a855f7');
+          grabGrad.addColorStop(1, '#ec4899');
+          ctx.fillStyle = grabGrad;
+          ctx.fillRect(151, 81, 498 * hpPct, 22);
+
+          ctx.fillStyle = '#ffffff';
+          ctx.font = 'bold 11px Arial';
+          ctx.textAlign = 'center';
+          ctx.fillText(`⚠️ 威脅警報: 巨型轟炸機 BOSS [BOMBER SUPREME] - HP ${Math.floor(hpPct*100)}%`, 400, 96);
+          ctx.textAlign = 'left';
+        }
+      }
+
+      requestAnimationFrame(updateEngine);
+    }
+
+    // --- GAME STATE TRANSITIONS ---
+    function triggerGameOverState() {
+      gameState = 'GAMEOVER';
+      
+      const p = player;
+      const minutes = Math.floor(p.timeElapsed / 60);
+      const seconds = Math.floor(p.timeElapsed % 60);
+      
+      document.getElementById('timeSurvivedVal').innerText = `${minutes}分 ${seconds}秒`;
+      document.getElementById('killsVal').innerText = `${p.kills} 架`;
+      document.getElementById('levelVal').innerText = `${p.level} 級`;
+      
+      const listEvos = p.activeEvolutions.length > 0 ? p.activeEvolutions.join(' & ') : '無 (尚未合體系統)';
+      document.getElementById('evolutionsVal').innerText = listEvos;
+
+      document.getElementById('gameoverScreen').classList.remove('hidden');
+    }
+
+    function triggerVictoryState() {
+      gameState = 'VICTORY';
+      
+      document.getElementById('vicKills').innerText = player.kills;
+      document.getElementById('vicLevel').innerText = player.level;
+
+      document.getElementById('highestScoreLabel').innerText = highKills;
+
+      document.getElementById('victoryScreen').classList.remove('hidden');
+    }
+
+    // Launch engine initialization loops automatically
+    requestAnimationFrame(updateEngine);
+
+  </script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+{
+  "name": "戰鬥直升機：無盡突圍",
+  "description": "二維點陣圖（Pixel Art）風格的戰鬥直升機生存與超武進化遊戲，擊退海量無人機、升級戰略武器並達成終極進化。",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
