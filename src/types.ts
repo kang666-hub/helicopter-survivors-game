@@ -8,6 +8,8 @@ export interface WeaponState {
   cooldownTimer: number; // in seconds
 }
 
+export type VehicleType = 'AH64' | 'F22' | 'AC130';
+
 export interface Player {
   x: number;
   y: number;
@@ -24,6 +26,7 @@ export interface Player {
   weapons: WeaponState[];
   kills: number;
   timeElapsed: number; // in seconds
+  vehicleType?: VehicleType;
 }
 
 export interface Enemy {

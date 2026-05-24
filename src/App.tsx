@@ -18,7 +18,7 @@ import {
   Info
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { GameState, Player, Enemy, Bullet, FireTrail, BatteryItem, Particle, UpgradeOption, WeaponState } from './types';
+import { GameState, Player, Enemy, Bullet, FireTrail, BatteryItem, Particle, UpgradeOption, WeaponState, VehicleType } from './types';
 
 interface Achievement {
   id: string;
@@ -42,12 +42,89 @@ const ACHIEVEMENTS_LIST: Achievement[] = [
   }
 ];
 
+export interface VehicleConfig {
+  name: string;
+  displayName: string;
+  description: string;
+  talent: string;
+  speed: number;
+  armor: number;
+  maxHp: number;
+  initialWeapon: 'machine_gun' | 'homing_missile';
+}
+
+export const VEHICLE_PRESETS: Record<VehicleType, VehicleConfig> = {
+  AH64: {
+    name: 'AH-64 COPTEL',
+    displayName: 'AH-64 COPTEL (阿帕契武裝直升機)',
+    description: '防禦型重裝空甲。自帶額外血量與防禦屏障抵抗傷害。',
+    talent: '最大生命值（HP）高出 30%，且自帶 20% 減傷固定護甲。',
+    speed: 60,
+    armor: 80,
+    maxHp: 130,
+    initialWeapon: 'machine_gun'
+  },
+  F22: {
+    name: 'F-22 RAPTOR',
+    displayName: 'F-22 RAPTOR (猛禽戰鬥機)',
+    description: '速度型超音速戰機。具備極限閃避推進器與量子隱形光罩。',
+    talent: '極速機動型。每過 10 秒會自動觸發 2 秒「隱形狀態」（機體閃爍），免疫無視所有碰撞與子彈傷害。',
+    speed: 90,
+    armor: 40,
+    maxHp: 100,
+    initialWeapon: 'machine_gun'
+  },
+  AC130: {
+    name: 'AC-130H SPECTRE',
+    displayName: 'AC-130H SPECTRE (空中砲艇)',
+    description: '火力型重型死亡天使。攜帶強大的追蹤航空飛彈，CD 固定大幅減少。',
+    talent: '開局解鎖「追蹤飛彈」代替機槍，且全武器的攻擊冷卻時間（CD）固定減少 20%。',
+    speed: 40,
+    armor: 60,
+    maxHp: 100,
+    initialWeapon: 'homing_missile'
+  }
+};
+
 export default function App() {
   // Canvas and loop triggers
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   
   // React UI States
   const [gameState, setGameState] = useState<GameState>('START');
+  const gameStateRef = useRef<GameState>('START');
+
+  const changeGameState = (state: GameState) => {
+    gameStateRef.current = state;
+    setGameState(state);
+  };
+
+  const [selectedVehicle, setSelectedVehicle] = useState<VehicleType>('AH64');
+  const [isMobile, setIsMobile] = useState<boolean>(false);
+  
+  // Mobile touch joystick state ref
+  const joystickRef = useRef<{
+    active: boolean;
+    startX: number;
+    startY: number;
+    curX: number;
+    curY: number;
+    baseX: number;
+    baseY: number;
+    vx: number;
+    vy: number;
+  }>({
+    active: false,
+    startX: 0,
+    startY: 0,
+    curX: 0,
+    curY: 0,
+    baseX: 110,
+    baseY: 480,
+    vx: 0,
+    vy: 0,
+  });
+
   const [hudHp, setHudHp] = useState<number>(100);
   const [hudMaxHp, setHudMaxHp] = useState<number>(100);
   const [hudLevel, setHudLevel] = useState<number>(1);
@@ -314,16 +391,116 @@ export default function App() {
     };
   }, []);
 
+  // Detect Touch / Mobile Devices and bind joystick touch controller events
+  useEffect(() => {
+    // Determine initially
+    const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    setIsMobile(hasTouch);
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const getTouchPos = (touch: Touch) => {
+      const rect = canvas.getBoundingClientRect();
+      // Translate responsive overlay back to hardcoded design space (800 x 600)
+      const x = ((touch.clientX - rect.left) / rect.width) * 800;
+      const y = ((touch.clientY - rect.top) / rect.height) * 600;
+      return { x, y };
+    };
+
+    const handleTouchStart = (e: TouchEvent) => {
+      if (gameStateRef.current !== 'PLAYING') return;
+
+      const joy = joystickRef.current;
+      for (let i = 0; i < e.touches.length; i++) {
+        const touch = e.touches[i];
+        const pos = getTouchPos(touch);
+        
+        // Dynamic detection threshold: let users touch anywhere near joystick base (120px leeway)
+        const distToJoyBase = Math.hypot(pos.x - joy.baseX, pos.y - joy.baseY);
+        if (distToJoyBase < 120) {
+          joy.active = true;
+          joy.startX = pos.x;
+          joy.startY = pos.y;
+          joy.curX = pos.x;
+          joy.curY = pos.y;
+          joy.vx = 0;
+          joy.vy = 0;
+          e.preventDefault();
+          break;
+        }
+      }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      const joy = joystickRef.current;
+      if (!joy.active) return;
+
+      for (let i = 0; i < e.touches.length; i++) {
+        const touch = e.touches[i];
+        const pos = getTouchPos(touch);
+
+        const dx = pos.x - joy.startX;
+        const dy = pos.y - joy.startY;
+        const dist = Math.hypot(dx, dy);
+
+        const limit = 60; // Max drag boundary for the thumb stick
+        if (dist > limit) {
+          joy.curX = joy.startX + (dx / dist) * limit;
+          joy.curY = joy.startY + (dy / dist) * limit;
+          joy.vx = dx / dist;
+          joy.vy = dy / dist;
+        } else {
+          joy.curX = pos.x;
+          joy.curY = pos.y;
+          joy.vx = dx / limit;
+          joy.vy = dy / limit;
+        }
+        e.preventDefault();
+        break;
+      }
+    };
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      const joy = joystickRef.current;
+      if (!joy.active) return;
+      
+      // Stop joystick movement
+      joy.active = false;
+      joy.vx = 0;
+      joy.vy = 0;
+      joy.curX = joy.baseX;
+      joy.curY = joy.baseY;
+    };
+
+    // Use passive: false to enable preventDefault scrolling lockout on touch controls!
+    canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+    canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
+    canvas.addEventListener('touchend', handleTouchEnd);
+    canvas.addEventListener('touchcancel', handleTouchEnd);
+
+    return () => {
+      canvas.removeEventListener('touchstart', handleTouchStart);
+      canvas.removeEventListener('touchmove', handleTouchMove);
+      canvas.removeEventListener('touchend', handleTouchEnd);
+      canvas.removeEventListener('touchcancel', handleTouchEnd);
+    };
+  }, [gameState]);
+
   // Set initial game parameters
   const initiateGame = () => {
     // Reset mutable refs
     const p = playerRef.current;
+    p.vehicleType = selectedVehicle;
     p.x = worldSize / 2;
     p.y = worldSize / 2;
     p.vx = 0;
     p.vy = 0;
-    p.hp = 100;
-    p.maxHp = 100;
+    
+    const preset = VEHICLE_PRESETS[selectedVehicle];
+    const startingMaxHp = preset.maxHp;
+    p.hp = startingMaxHp;
+    p.maxHp = startingMaxHp;
     p.level = 1;
     p.xp = 0;
     p.maxXp = 10;
@@ -331,8 +508,10 @@ export default function App() {
     p.timeElapsed = 0;
     p.angle = 0;
     p.rotorAngle = 0;
+    
+    // Auto preset initial weapons based on vehicle preset
     p.weapons = [
-      { type: 'machine_gun', level: 1, cooldownTimer: 0 }
+      { type: preset.initialWeapon, level: 1, cooldownTimer: 0 }
     ];
 
     enemiesRef.current = [];
@@ -344,10 +523,19 @@ export default function App() {
     lastTimeRef.current = Date.now();
     playerInvincibleTicksRef.current = 0;
     droneAngleRef.current = 0;
+    magnetFlashRef.current = 0;
+
+    // Reset touch joystick if working
+    const joy = joystickRef.current;
+    joy.active = false;
+    joy.vx = 0;
+    joy.vy = 0;
+    joy.curX = joy.baseX;
+    joy.curY = joy.baseY;
 
     // Set react states matching ref values
-    setHudHp(100);
-    setHudMaxHp(100);
+    setHudHp(startingMaxHp);
+    setHudMaxHp(startingMaxHp);
     setHudLevel(1);
     setHudXp(0);
     setHudMaxXp(10);
@@ -358,8 +546,8 @@ export default function App() {
     setActiveEvolutions([]);
 
     playSound('power');
-    setGameState('PLAYING');
     isPlayingRef.current = true;
+    changeGameState('PLAYING');
   };
 
   // Explosion Particle Spawning Utility
@@ -613,7 +801,7 @@ export default function App() {
     let animId: number;
 
     const gameLoop = () => {
-      if (gameState !== 'PLAYING' || !isPlayingRef.current) {
+      if (gameStateRef.current !== 'PLAYING' || !isPlayingRef.current) {
         // Just keep request going or stall
         animId = requestAnimationFrame(gameLoop);
         return;
@@ -660,15 +848,22 @@ export default function App() {
       });
 
       // 2. HELICOPTER MOVEMENT WITH INERTIA / DIRECT DRIFTING SLIDE
+      const speedScale = p.vehicleType === 'F22' ? 1.4 : (p.vehicleType === 'AC130' ? 0.7 : 1.0);
       const acc = 1.1; // Thrust force
       const friction = 0.90; // Drift weight (drag coefficient)
       let ax = 0;
       let ay = 0;
 
-      if (keys['w'] || keys['arrowup']) ay -= acc;
-      if (keys['s'] || keys['arrowdown']) ay += acc;
-      if (keys['a'] || keys['arrowleft']) ax -= acc;
-      if (keys['d'] || keys['arrowright']) ax += acc;
+      const joy = joystickRef.current;
+      if (joy.active) {
+        ax += joy.vx * acc * speedScale;
+        ay += joy.vy * acc * speedScale;
+      } else {
+        if (keys['w'] || keys['arrowup']) ay -= acc * speedScale;
+        if (keys['s'] || keys['arrowdown']) ay += acc * speedScale;
+        if (keys['a'] || keys['arrowleft']) ax -= acc * speedScale;
+        if (keys['d'] || keys['arrowright']) ax += acc * speedScale;
+      }
 
       // Apply acceleration to velocity vector
       p.vx += ax;
@@ -679,7 +874,7 @@ export default function App() {
       p.vy *= friction;
 
       // Clamp velocities to max speed limit
-      const maxSpeed = 5.2;
+      const maxSpeed = 5.2 * speedScale;
       const speed = Math.hypot(p.vx, p.vy);
       if (speed > maxSpeed) {
         p.vx = (p.vx / speed) * maxSpeed;
@@ -806,6 +1001,7 @@ export default function App() {
       }
 
       // 4. WEAPONS FIRING TICK SYSTEMS
+      const weaponCdMultiplier = p.vehicleType === 'AC130' ? 0.8 : 1.0;
       p.weapons.forEach(weapon => {
         weapon.cooldownTimer -= deltaTime;
         if (weapon.cooldownTimer <= 0) {
@@ -871,7 +1067,7 @@ export default function App() {
                 }
                 
                 playSound('shoot');
-                weapon.cooldownTimer = mgCooldowns[curLvlIdx];
+                weapon.cooldownTimer = mgCooldowns[curLvlIdx] * weaponCdMultiplier;
               }
               break;
             }
@@ -911,7 +1107,7 @@ export default function App() {
                 });
 
                 playSound('missile');
-                weapon.cooldownTimer = msCooldowns[curLvlIdx];
+                weapon.cooldownTimer = msCooldowns[curLvlIdx] * weaponCdMultiplier;
               }
               break;
             }
@@ -944,7 +1140,7 @@ export default function App() {
               }
 
               playSound('flare');
-              weapon.cooldownTimer = flCooldowns[curLvlIdx];
+              weapon.cooldownTimer = flCooldowns[curLvlIdx] * weaponCdMultiplier;
               break;
             }
 
@@ -982,7 +1178,7 @@ export default function App() {
                 });
 
                 playSound('shoot');
-                weapon.cooldownTimer = 0.11; // 0.11s firing interval!
+                weapon.cooldownTimer = 0.11 * weaponCdMultiplier; // 0.11s firing interval!
               }
               break;
             }
@@ -1023,7 +1219,7 @@ export default function App() {
                 });
 
                 playSound('missile');
-                weapon.cooldownTimer = 1.0; // Shoot every 1 sec
+                weapon.cooldownTimer = 1.0 * weaponCdMultiplier; // Shoot every 1 sec
               }
               break;
             }
@@ -1368,9 +1564,20 @@ export default function App() {
 
         if (pCollideDist < touchRadius) {
           // If player has invincibility ticks left, avoid damage
-          if (playerInvincibleTicksRef.current <= 0) {
-            const rawDmg = e.type === 'boss' ? 25 : (e.type === 'shield_drone' ? 15 : 8);
-            p.hp = Math.max(0, p.hp - rawDmg);
+          // Or if F-22 has active 2s stealth window (from % 12s, 10-12s range is stealth)
+          let isF22Stealth = false;
+          if (p.vehicleType === 'F22') {
+            const stealthCycle = p.timeElapsed % 12;
+            isF22Stealth = stealthCycle >= 10;
+          }
+
+          if (playerInvincibleTicksRef.current <= 0 && !isF22Stealth) {
+            let baseDmg = e.type === 'boss' ? 25 : (e.type === 'shield_drone' ? 15 : 8);
+            if (p.vehicleType === 'AH64') {
+              baseDmg *= 0.8; // Ah64 Armored passive (20% passive reduction)
+            }
+            const finalDmg = Math.max(1, Math.round(baseDmg));
+            p.hp = Math.max(0, p.hp - finalDmg);
             playerInvincibleTicksRef.current = 30; // 0.5s of invincibility
             playSound('hit');
             setShakeIntensity(prev => Math.min(10, prev + 6.0));
@@ -1384,7 +1591,7 @@ export default function App() {
             // Handle player death
             if (p.hp <= 0) {
               isPlayingRef.current = false;
-              setGameState('GAMEOVER');
+              changeGameState('GAMEOVER');
               playSound('explosion');
               return;
             }
@@ -1884,94 +2091,198 @@ export default function App() {
       ctx.translate(pxView, pyView);
       ctx.rotate(p.angle); // banking side-climb banking tilt
 
-      // Flash player screen red briefly if hit invincibility timers are counting
-      const renderHelicopterNormal = (playerInvincibleTicksRef.current === 0 || Math.floor(frameCountRef.current / 4) % 2 === 0);
+      // Flash player screen red briefly if hit invincibility timers are counting or F-22 is in stealth
+      let isF22Stealth = false;
+      if (p.vehicleType === 'F22') {
+        const stealthCycle = p.timeElapsed % 12;
+        isF22Stealth = stealthCycle >= 10;
+      }
+      const isDamagedBlink = playerInvincibleTicksRef.current > 0;
+      const renderHelicopterNormal = (!isDamagedBlink && !isF22Stealth) || (Math.floor(frameCountRef.current / 4) % 2 === 0);
 
       if (renderHelicopterNormal) {
-        // Draw Helicopter fuselage (Military Heavy Green style)
-        // Main Armored box core
-        ctx.fillStyle = '#1e3f20'; // deep military olive green
-        ctx.fillRect(-18, -10, 36, 18);
-        ctx.fillStyle = '#14532d'; // darker accents shadow
-        ctx.fillRect(-18, 2, 36, 6);
-
-        // Cockpit window (Blue electric tech armor glass)
-        ctx.fillStyle = '#06b6d4'; // bright glowing cyan plate
-        ctx.beginPath();
-        ctx.moveTo(4, -8);
-        ctx.lineTo(16, -8);
-        ctx.lineTo(18, 2);
-        ctx.lineTo(4, 2);
-        ctx.closePath();
-        ctx.fill();
-        
-        ctx.fillStyle = '#22d3ee'; // gleam flash light
-        ctx.fillRect(8, -6, 6, 3);
-
-        // Tail boom assembly line
-        ctx.fillStyle = '#1e3f20';
-        ctx.fillRect(-34, -5, 18, 6);
-        ctx.fillStyle = '#14532d';
-        ctx.fillRect(-34, 1, 18, 2);
-
-        // Vertical Stabilizer fins
-        ctx.fillStyle = '#0f766e';
-        ctx.beginPath();
-        ctx.moveTo(-34, -12);
-        ctx.lineTo(-28, -5);
-        ctx.lineTo(-34, -5);
-        ctx.closePath();
-        ctx.fill();
-
-        // Tail counter-weight blade rotor assembly
-        ctx.fillStyle = '#78716c';
-        ctx.fillRect(-38, -8, 2, 12);
-        
-        // Mini rotate tail rotor line representation
-        const trAng = p.rotorAngle * 0.7;
-        ctx.strokeStyle = '#e2e8f0';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(-37, -2);
-        ctx.lineTo(-37 + Math.cos(trAng) * 6, -2 + Math.sin(trAng) * 6);
-        ctx.moveTo(-37, -2);
-        ctx.lineTo(-37 + Math.cos(trAng + Math.PI) * 6, -2 + Math.sin(trAng + Math.PI) * 6);
-        ctx.stroke();
-
-        // Under-fuselage Landing Gear runners skids
-        ctx.fillStyle = '#374151'; // dark iron steel bounds
-        ctx.fillRect(-14, 10, 26, 3); // Skid tube horizontal
-        ctx.fillRect(-10, 8, 3, 3); // struts support
-        ctx.fillRect(6, 8, 3, 3);
-
-        // Armament Weapon Launcher carriage side wing pods
-        ctx.fillStyle = '#4b5563';
-        ctx.fillRect(-8, -13, 16, 4); // launcher rack
-        
-        // Spinning Main Top Helicopter Rotor Blades Assembly
-        ctx.fillStyle = '#475569';
-        ctx.fillRect(-3, -15, 6, 6); // Rotor shaft spindle mounting
-
-        ctx.strokeStyle = '#94a3b8'; // Rotor blades color metallic plate
-        ctx.lineWidth = 2.5;
-
-        // 3 rotor blade structures rotated by dynamic rotorAngle accumulator
-        const angles = [p.rotorAngle, p.rotorAngle + (Math.PI * 2) / 3, p.rotorAngle + (Math.PI * 4) / 3];
-        const bladeSpansAllowed = 44; // pixel drag size
-
-        angles.forEach(ang => {
+        if (p.vehicleType === 'F22') {
+          // --- DRAW F-22 RAPTOR (Supersonic Metallic Silver Jets) ---
+          // Main geometric triangular fuselage (朝右，所以 x 軸向右)
+          ctx.fillStyle = '#64748b'; // Sleek slate armor plating
           ctx.beginPath();
-          ctx.moveTo(0, -12);
-          ctx.lineTo(Math.cos(ang) * bladeSpansAllowed, -12 + Math.sin(ang) * 4); // slight slant drop illusion
+          ctx.moveTo(22, 0);       // Nose
+          ctx.lineTo(-20, -15);    // Left main wing base tail
+          ctx.lineTo(-11, -4);     // Inside wedge
+          ctx.lineTo(-14, 0);      // Center engine root
+          ctx.lineTo(-11, 4);      // Inside wedge
+          ctx.lineTo(-20, 15);     // Right main wing base tail
+          ctx.closePath();
+          ctx.fill();
+
+          // Highlight dorsal ridge core
+          ctx.fillStyle = '#475569'; // Darker mechanical plates
+          ctx.beginPath();
+          ctx.moveTo(11, 0);
+          ctx.lineTo(-10, -8);
+          ctx.lineTo(-6, 0);
+          ctx.lineTo(-10, 8);
+          ctx.closePath();
+          ctx.fill();
+
+          // Cyber Electroluminescent cockpit windshield glass (Electric blue glow)
+          ctx.fillStyle = '#38bdf8';
+          ctx.beginPath();
+          ctx.moveTo(8, -3);
+          ctx.lineTo(15, 0);
+          ctx.lineTo(8, 3);
+          ctx.lineTo(4, 0);
+          ctx.closePath();
+          ctx.fill();
+
+          // Spark gleam inside canopy
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(8, -1, 3, 2);
+
+          // Twin-vector exhaust thrusters glowing flame output
+          ctx.fillStyle = (frameCountRef.current % 2 === 0) ? '#f97316' : '#ef4444'; // pulsing heat
+          ctx.fillRect(-18, -6, 5, 3);
+          ctx.fillRect(-18, 3, 5, 3);
+
+          ctx.fillStyle = '#fef08a'; // yellow inner core
+          ctx.fillRect(-16, -5, 2, 1);
+          ctx.fillRect(-16, 4, 2, 1);
+
+        } else if (p.vehicleType === 'AC130') {
+          // --- DRAW AC-130H SPECTRE (Heavy Iron Flying Fortress) ---
+          // Heavy wide center fuselage box structure
+          ctx.fillStyle = '#1e293b'; // Super dark charcoal hull
+          ctx.fillRect(-22, -12, 44, 24);
+          ctx.fillStyle = '#0f172a'; // Bottom shading plate
+          ctx.fillRect(-22, 6, 44, 4);
+
+          // Rounded front radar dome
+          ctx.fillStyle = '#475569';
+          ctx.beginPath();
+          ctx.arc(22, 0, 8, -Math.PI/2, Math.PI/2);
+          ctx.fill();
+
+          // High-aspect long wings spanning vertically (across the y-axis)
+          ctx.fillStyle = '#334155'; // Dark blue steel main wing slab
+          ctx.fillRect(-6, -35, 12, 70); // Huge wingspan bounds
+
+          // Right & Left wingtips navigational strobe lights (Flash red/white)
+          ctx.fillStyle = '#ef4444';
+          ctx.fillRect(-3, -37, 6, 2);
+          ctx.fillRect(-3, 35, 6, 2);
+
+          // Portside active artillery gun cannons pointing outward (downward relative to flight)
+          ctx.fillStyle = '#78716c';
+          ctx.fillRect(-10, 10, 4, 16);  // Major howitzer gun barrels
+          ctx.fillRect(-2, 10, 3, 12);   // Secondary minigun pods
+
+          // Dual mechanical turboprop engine nacelles housed on left & right wings
+          ctx.fillStyle = '#0f172a';
+          ctx.fillRect(-10, -22, 12, 7);  // Left engine body
+          ctx.fillRect(-10, 15, 12, 7);   // Right engine body
+
+          // Active rotating triple-propeller blade spinners
+          ctx.strokeStyle = '#94a3b8';
+          ctx.lineWidth = 1.5;
+          const pAngle = p.rotorAngle * 1.5;
+          
+          // Left Propeller lines
+          ctx.beginPath();
+          ctx.moveTo(-2, -18);
+          ctx.lineTo(-2 + Math.cos(pAngle) * 11, -18 + Math.sin(pAngle) * 11);
+          ctx.moveTo(-2, -18);
+          ctx.lineTo(-2 - Math.cos(pAngle) * 11, -18 - Math.sin(pAngle) * 11);
+          // Right Propeller lines
+          ctx.moveTo(-2, 19);
+          ctx.lineTo(-2 + Math.cos(pAngle + Math.PI/2) * 11, 19 + Math.sin(pAngle + Math.PI/2) * 11);
+          ctx.moveTo(-2, 19);
+          ctx.lineTo(-2 - Math.cos(pAngle + Math.PI/2) * 11, 19 - Math.sin(pAngle + Math.PI/2) * 11);
           ctx.stroke();
 
-          // Tiny yellow safety signal pixel at the tip of blade
-          ctx.fillStyle = '#eab308';
-          ctx.fillRect(Math.cos(ang) * bladeSpansAllowed - 1, -13 + Math.sin(ang) * 4, 3, 3);
-        });
+        } else {
+          // --- DRAW AH-64 COPTEL (Original Armed Heavy Helicopter) ---
+          ctx.fillStyle = '#1e3f20'; // deep military olive green
+          ctx.fillRect(-18, -10, 36, 18);
+          ctx.fillStyle = '#14532d'; // darker accents shadow
+          ctx.fillRect(-18, 2, 36, 6);
 
+          // Cockpit window (Blue electric tech armor glass)
+          ctx.fillStyle = '#06b6d4'; // bright glowing cyan plate
+          ctx.beginPath();
+          ctx.moveTo(4, -8);
+          ctx.lineTo(16, -8);
+          ctx.lineTo(18, 2);
+          ctx.lineTo(4, 2);
+          ctx.closePath();
+          ctx.fill();
+          
+          ctx.fillStyle = '#22d3ee'; // gleam flash light
+          ctx.fillRect(8, -6, 6, 3);
+
+          // Tail boom assembly line
+          ctx.fillStyle = '#1e3f20';
+          ctx.fillRect(-34, -5, 18, 6);
+          ctx.fillStyle = '#14532d';
+          ctx.fillRect(-34, 1, 18, 2);
+
+          // Vertical Stabilizer fins
+          ctx.fillStyle = '#0f766e';
+          ctx.beginPath();
+          ctx.moveTo(-34, -12);
+          ctx.lineTo(-28, -5);
+          ctx.lineTo(-34, -5);
+          ctx.closePath();
+          ctx.fill();
+
+          // Tail counter-weight blade rotor assembly
+          ctx.fillStyle = '#78716c';
+          ctx.fillRect(-38, -8, 2, 12);
+          
+          // Mini rotate tail rotor line representation
+          const trAng = p.rotorAngle * 0.7;
+          ctx.strokeStyle = '#e2e8f0';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(-37, -2);
+          ctx.lineTo(-37 + Math.cos(trAng) * 6, -2 + Math.sin(trAng) * 6);
+          ctx.moveTo(-37, -2);
+          ctx.lineTo(-37 + Math.cos(trAng + Math.PI) * 6, -2 + Math.sin(trAng + Math.PI) * 6);
+          ctx.stroke();
+
+          // Under-fuselage Landing Gear runners skids
+          ctx.fillStyle = '#374151'; // dark iron steel bounds
+          ctx.fillRect(-14, 10, 26, 3); // Skid tube horizontal
+          ctx.fillRect(-10, 8, 3, 3); // struts support
+          ctx.fillRect(6, 8, 3, 3);
+
+          // Armament Weapon Launcher carriage side wing pods
+          ctx.fillStyle = '#4b5563';
+          ctx.fillRect(-8, -13, 16, 4); // launcher rack
+          
+          // Spinning Main Top Helicopter Rotor Blades Assembly
+          ctx.fillStyle = '#475569';
+          ctx.fillRect(-3, -15, 6, 6); // Rotor shaft spindle mounting
+
+          ctx.strokeStyle = '#94a3b8'; // Rotor blades color metallic plate
+          ctx.lineWidth = 2.5;
+
+          // 3 rotor blade structures rotated by dynamic rotorAngle accumulator
+          const angles = [p.rotorAngle, p.rotorAngle + (Math.PI * 2) / 3, p.rotorAngle + (Math.PI * 4) / 3];
+          const bladeSpansAllowed = 44; // pixel drag size
+
+          angles.forEach(ang => {
+            ctx.beginPath();
+            ctx.moveTo(0, -12);
+            ctx.lineTo(Math.cos(ang) * bladeSpansAllowed, -12 + Math.sin(ang) * 4); // slight slant drop illusion
+            ctx.stroke();
+
+            // Tiny yellow safety signal pixel at the tip of blade
+            ctx.fillStyle = '#eab308';
+            ctx.fillRect(Math.cos(ang) * bladeSpansAllowed - 1, -13 + Math.sin(ang) * 4, 3, 3);
+          });
+        }
       } else {
-        // Blink red state to indicate damage frames visually
+        // Red state blinking when taking bullet or collision damage
         ctx.fillStyle = '#ef4444';
         ctx.fillRect(-18, -10, 36, 18);
         ctx.fillStyle = '#b91c1c';
@@ -1989,6 +2300,50 @@ export default function App() {
         magnetFlashRef.current--;
       }
 
+      // Draw virtual joystick controls if isMobile or active
+      if (isMobile) {
+        const joy = joystickRef.current;
+        // Draw Outer Base Circle Ring (Cypher style)
+        ctx.strokeStyle = joy.active ? 'rgba(34, 211, 238, 0.6)' : 'rgba(148, 163, 184, 0.35)';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(joy.baseX, joy.baseY, 50, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // 8-directional coordinate helper dots for cyber feel
+        ctx.fillStyle = joy.active ? 'rgba(34, 211, 238, 0.4)' : 'rgba(148, 163, 184, 0.2)';
+        for (let a = 0; a < 8; a++) {
+          const helperAngle = (a * Math.PI) / 4;
+          const hOffset = 50;
+          ctx.fillRect(
+            joy.baseX + Math.cos(helperAngle) * hOffset - 2,
+            joy.baseY + Math.sin(helperAngle) * hOffset - 2,
+            4,
+            4
+          );
+        }
+
+        // Draw Inner Interactive Thumb Stick Nob
+        ctx.fillStyle = joy.active ? '#22d3ee' : 'rgba(148, 163, 184, 0.5)';
+        ctx.beginPath();
+        ctx.arc(joy.curX, joy.curY, 20, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Glowing cyan dot accent on the center of thumb stick
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(joy.curX, joy.curY, 6, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Connect trace line from base to center thumb
+        ctx.strokeStyle = 'rgba(34, 211, 238, 0.5)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(joy.baseX, joy.baseY);
+        ctx.lineTo(joy.curX, joy.curY);
+        ctx.stroke();
+      }
+
       // Continue game execution frames
       animId = requestAnimationFrame(gameLoop);
     };
@@ -1999,7 +2354,7 @@ export default function App() {
     return () => {
       cancelAnimationFrame(animId);
     };
-  }, [gameState]);
+  }, [gameState, isMobile]);
 
   return (
     <div id="game_app_container" className="flex flex-col items-center justify-center min-h-screen px-4 py-8 select-none bg-slate-950 font-sans text-slate-100 overflow-x-hidden">
@@ -2191,7 +2546,9 @@ export default function App() {
                         <span className="font-display font-black text-lg text-white">
                           LV. <span className="text-teal-400">{hudLevel}</span>
                         </span>
-                        <span className="font-mono text-[10px] text-slate-400 uppercase tracking-widest">AH-64 APPARELI</span>
+                        <span className="font-mono text-[10px] text-slate-400 uppercase tracking-widest">
+                          {selectedVehicle === 'AH64' ? 'AH-64 COPTEL' : selectedVehicle === 'F22' ? 'F-22 RAPTOR' : 'AC-130H SPECTRE'}
+                        </span>
                       </div>
 
                       {/* Green HP Bar */}
@@ -2295,55 +2652,109 @@ export default function App() {
               
               {/* START INITIAL MENU OVERLAY */}
               {gameState === 'START' && (
-                <div id="start_screen_overlay" className="absolute inset-0 bg-slate-950/95 flex flex-col items-center justify-center p-6 text-center z-20 backdrop-blur">
-                  <div className="max-w-md w-full space-y-6">
-                    <div className="space-y-2 relative">
-                      <div className="absolute inset-0 bg-emerald-500/10 blur-xl rounded-full" />
-                      <span className="relative text-xs text-teal-400 font-mono tracking-widest bg-teal-950/80 border border-teal-900/60 px-3 py-1 rounded-full uppercase font-bold inline-block">
-                        ROUGELIKE HELICOPTER FLIGHT SURVIVAL
-                      </span>
-                      <h2 className="game-title text-4xl font-extrabold text-white tracking-widest leading-none drop-shadow pt-2">
-                        戰鬥直升機 <br />
-                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-teal-400 via-emerald-400 to-yellow-300">
-                          無盡突圍
-                        </span>
-                      </h2>
-                      <p className="text-slate-400 text-sm max-w-sm mx-auto font-mono mt-2">
-                        機槍咆哮，突破現代科技無人機軍團的包圍！搜集能量，解鎖不可思議的【超武合體進化】。
-                      </p>
-                    </div>
+                <div id="start_screen_overlay" className="absolute inset-x-0 inset-y-0 bg-slate-950/98 flex flex-col items-center justify-center p-4 text-center z-20 backdrop-blur overflow-y-auto">
+                  
+                  {/* Outer Main Heading Header */}
+                  <div className="text-center space-y-1 mb-3">
+                    <span className="text-[10px] text-teal-400 font-mono tracking-widest bg-teal-950/80 border border-teal-900/60 px-3 py-0.5 rounded-full uppercase font-bold inline-block">
+                      ROUGELIKE MILITARY FLIGHT SURVIVAL
+                    </span>
+                    <h2 className="game-title text-3xl font-black text-white tracking-widest leading-none">
+                      戰機武裝：<span className="text-transparent bg-clip-text bg-gradient-to-r from-teal-400 via-cyan-400 to-yellow-300">無盡突圍</span>
+                    </h2>
+                  </div>
 
-                    {/* CHOPPER DRAW SCHEMATIC BACKGROUND */}
-                    <div className="border border-slate-800 rounded-lg p-4 bg-slate-900/40 relative flex items-center justify-center py-6">
-                      <div className="absolute top-2 left-2 text-[8px] font-mono text-slate-500 uppercase">SCHEMATIC DIAGRAM v1.02</div>
+                  {/* Two Column Command Center Split */}
+                  <div className="grid grid-cols-1 md:grid-cols-5 gap-4 w-full max-w-2xl px-2">
+                    
+                    {/* LEFT PANEL: CYBER TECH PROJECT NOTES (2 column span) */}
+                    <div className="md:col-span-2 border border-emerald-500/30 bg-emerald-950/10 p-3 rounded-lg flex flex-col text-left">
+                      <div className="flex items-center gap-1.5 border-b border-emerald-500/20 pb-1.5 mb-2 font-mono">
+                        <span className="h-2 w-2 rounded-full bg-emerald-500 animate-ping" />
+                        <span className="text-[10px] font-bold text-emerald-400 tracking-wider uppercase">INITIALIZATION LOG & NOTES</span>
+                      </div>
+                      <div className="font-mono text-[10px] text-emerald-400 leading-relaxed whitespace-pre-wrap select-text h-full">{"1. PROJECT INITIALIZED: VITE + TYPESCRIPT ARCHITECTURE CONFIRMED.\n2. DEPLOYMENT TARGET: GITHUB PAGES VIA GITHUB ACTIONS.\n3. NEW FEATURE: CHARACTER SELECTION INTERFACE ADDED FOR MULTIPLE DEPLOYABLE UNITS (AH-64, F-22, AC-130).\n4. STEAM VERSION PREPARATION: FUTURE EXTENSIONS WILL INCLUDE 10+ EVO-WEAPONS AND FULL CHARACTER UNLOCKS."}</div>
                       
-                      {/* Stylized Pixel Helicopter preview display */}
-                      <div className="flex flex-col items-center gap-2">
-                        <div className="flex items-center gap-1">
-                          <div className="h-1.5 w-16 bg-gradient-to-r from-slate-500 via-teal-400 to-slate-500 animate-pulse rounded-full" />
-                        </div>
-                        <div className="h-8 w-20 bg-teal-900/30 border border-teal-500/40 rounded flex items-center justify-center text-teal-300 text-[11px] font-mono font-bold uppercase relative">
-                          AH-64 Copter
-                          <div className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-emerald-500" />
-                        </div>
-                        <div className="h-1 w-10 bg-slate-600 rounded-full" />
+                      {/* Sub footer */}
+                      <div className="mt-4 pt-1.5 border-t border-emerald-500/20 text-[9px] font-mono text-emerald-500/70">
+                        OFFICIAL ALPHA COMMAND BUILD v1.28
                       </div>
                     </div>
 
-                    <div className="space-y-3">
-                      <button 
-                        onClick={initiateGame}
-                        id="commence_mission_btn"
-                        className="w-full bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-400 hover:to-teal-500 text-black font-display font-black text-lg py-3 px-6 rounded-md hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg shadow-emerald-500/20 uppercase tracking-widest block"
-                      >
-                        開始任務 / COMMENCE
-                      </button>
+                    {/* RIGHT PANEL: CHARACTER SELECT (3 column span) */}
+                    <div className="md:col-span-3 flex flex-col justify-between gap-3 text-left">
+                      <div>
+                        <span className="text-[10px] font-mono text-cyan-400 tracking-widest uppercase font-bold block mb-1.5">★ 請選擇您要部署的出擊機體</span>
+                        
+                        <div className="space-y-2">
+                          {/* AH-64 CARDS */}
+                          <button
+                            onClick={() => { setSelectedVehicle('AH64'); playSound('power'); }}
+                            className={`w-full text-left p-2 rounded-lg border flex items-center gap-2.5 transition-all ${selectedVehicle === 'AH64' ? 'bg-emerald-950/30 border-emerald-500 shadow-md shadow-emerald-500/10' : 'bg-slate-900/60 border-slate-800 hover:border-slate-700 hover:bg-slate-800'}`}
+                          >
+                            <span className="text-xl">🟢</span>
+                            <div className="flex-1">
+                              <div className="flex justify-between items-center leading-none">
+                                <span className={`text-[11px] font-bold ${selectedVehicle === 'AH64' ? 'text-emerald-400' : 'text-white'}`}>AH-64 COPTEL 阿帕契</span>
+                                <span className="text-[8px] bg-emerald-500/10 text-emerald-400 px-1 rounded uppercase font-mono border border-emerald-500/20">防禦型</span>
+                              </div>
+                              <p className="text-[9px] text-slate-400 mt-0.5 leading-relaxed font-mono">
+                                護甲天賦：HP 高出 30%，自帶 20% 減傷護甲。
+                              </p>
+                            </div>
+                          </button>
 
-                      <div className="text-slate-500 font-mono text-[10px] space-y-1">
-                        <p>直升機搭載自主慣性推進，具有微摩擦力滑行控感</p>
-                        <p>© 2026 MILITARY FLIGHT LABS. ALL RIGHTS RESERVED.</p>
+                          {/* F-22 RAPTOR CARD */}
+                          <button
+                            onClick={() => { setSelectedVehicle('F22'); playSound('power'); }}
+                            className={`w-full text-left p-2 rounded-lg border flex items-center gap-2.5 transition-all ${selectedVehicle === 'F22' ? 'bg-cyan-950/30 border-cyan-500 shadow-md shadow-cyan-500/10' : 'bg-slate-900/60 border-slate-800 hover:border-slate-700 hover:bg-slate-800'}`}
+                          >
+                            <span className="text-xl">🔵</span>
+                            <div className="flex-1">
+                              <div className="flex justify-between items-center leading-none">
+                                <span className={`text-[11px] font-bold ${selectedVehicle === 'F22' ? 'text-cyan-400' : 'text-white'}`}>F-22 RAPTOR 猛禽</span>
+                                <span className="text-[8px] bg-cyan-500/10 text-cyan-400 px-1 rounded uppercase font-mono border border-cyan-500/20">速度型</span>
+                              </div>
+                              <p className="text-[9px] text-slate-400 mt-0.5 leading-relaxed font-mono">
+                                機動閃避：每過 10 秒自動獲得 2 秒隱形，免疫一切傷害！
+                              </p>
+                            </div>
+                          </button>
+
+                          {/* AC-130 CARD */}
+                          <button
+                            onClick={() => { setSelectedVehicle('AC130'); playSound('power'); }}
+                            className={`w-full text-left p-2 rounded-lg border flex items-center gap-2.5 transition-all ${selectedVehicle === 'AC130' ? 'bg-fuchsia-950/30 border-fuchsia-500 shadow-md shadow-fuchsia-500/10' : 'bg-slate-900/60 border-slate-800 hover:border-slate-700 hover:bg-slate-800'}`}
+                          >
+                            <span className="text-xl">🟣</span>
+                            <div className="flex-1">
+                              <div className="flex justify-between items-center leading-none">
+                                <span className={`text-[11px] font-bold ${selectedVehicle === 'AC130' ? 'text-fuchsia-400' : 'text-white'}`}>AC-130H SPECTRE 砲艇</span>
+                                <span className="text-[8px] bg-fuchsia-500/10 text-fuchsia-400 px-1 rounded uppercase font-mono border border-fuchsia-500/20">火力型</span>
+                              </div>
+                              <p className="text-[9px] text-slate-400 mt-0.5 leading-relaxed font-mono">
+                                雷霆火力：初始自帶飛彈而非機槍，全武器攻擊 CD 縮短 20%！
+                              </p>
+                            </div>
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2 mt-1">
+                        <button
+                          onClick={initiateGame}
+                          id="commence_mission_btn"
+                          className="w-full bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-black font-display font-black text-[13px] py-2.5 px-4 rounded-md hover:scale-[1.01] active:scale-[0.99] transition-all shadow-lg shadow-teal-500/20 uppercase tracking-widest block text-center font-bold"
+                        >
+                          派遣部隊出擊 / COMMENCE DEPLOYMENT
+                        </button>
+                        
+                        <div className="hidden sm:block text-slate-500 font-mono text-[8.5px] leading-tight text-center">
+                          * 戰機支援鍵盤 WASD 操作，若為行動裝置則自動啟用觸控虛擬搖桿
+                        </div>
                       </div>
                     </div>
+
                   </div>
                 </div>
               )}
