@@ -226,6 +226,7 @@ export default function App() {
   const playerInvincibleTicksRef = useRef<number>(0);
   const droneAngleRef = useRef<number>(0);
   const magnetFlashRef = useRef<number>(0);
+  const animationFrameIdRef = useRef<number | null>(null);
 
   // Sound generator helpers using Web Audio API
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -377,6 +378,12 @@ export default function App() {
     const handleKeyDown = (e: KeyboardEvent) => {
       const k = e.key.toLowerCase();
       keysRef.current[k] = true;
+
+      // Global or GAMEOVER state space check to redeploy/restart game
+      if ((e.key === ' ' || e.code === 'Space') && gameStateRef.current === 'GAMEOVER') {
+        e.preventDefault();
+        resetGame();
+      }
     };
     const handleKeyUp = (e: KeyboardEvent) => {
       const k = e.key.toLowerCase();
@@ -489,7 +496,13 @@ export default function App() {
 
   // Set initial game parameters and completely reset all state values (combat items, bullets, enemies)
   const resetGame = () => {
-    // Reset mutable refs
+    // 1. Forcefully terminates any active or pending requestAnimationFrame synchronously
+    if (animationFrameIdRef.current !== null) {
+      cancelAnimationFrame(animationFrameIdRef.current);
+      animationFrameIdRef.current = null;
+    }
+
+    // 2. Reset mutable player references
     const p = playerRef.current;
     p.vehicleType = selectedVehicle;
     p.x = worldSize / 2;
@@ -514,11 +527,22 @@ export default function App() {
       { type: preset.initialWeapon, level: 1, cooldownTimer: 0 }
     ];
 
+    // 3. Clear all game entities references using both length = 0 and reassignment (Bulletproof)
+    if (enemiesRef.current) enemiesRef.current.length = 0;
     enemiesRef.current = [];
+
+    if (bulletsRef.current) bulletsRef.current.length = 0;
     bulletsRef.current = [];
+
+    if (trailsRef.current) trailsRef.current.length = 0;
     trailsRef.current = [];
+
+    if (batteriesRef.current) batteriesRef.current.length = 0;
     batteriesRef.current = [];
+
+    if (particlesRef.current) particlesRef.current.length = 0;
     particlesRef.current = [];
+
     frameCountRef.current = 0;
     lastTimeRef.current = Date.now();
     playerInvincibleTicksRef.current = 0;
@@ -533,7 +557,7 @@ export default function App() {
     joy.curX = joy.baseX;
     joy.curY = joy.baseY;
 
-    // Set react states matching ref values
+    // 4. Set React states to match reset values
     setHudHp(startingMaxHp);
     setHudMaxHp(startingMaxHp);
     setHudLevel(1);
@@ -543,9 +567,15 @@ export default function App() {
     setGameTime(0);
     setWeapons(p.weapons);
     setBossActive(false);
+    setBossHp(0);
+    setBossMaxHp(1000);
     setActiveEvolutions([]);
+    setShakeIntensity(0);
 
+    // 5. Play select confirm sound
     playSound('power');
+
+    // 6. Resume playing status and transition state to PLAYING
     isPlayingRef.current = true;
     changeGameState('PLAYING');
   };
@@ -808,6 +838,7 @@ export default function App() {
       if (gameStateRef.current !== 'PLAYING' || !isPlayingRef.current) {
         // Just keep request going or stall
         animId = requestAnimationFrame(gameLoop);
+        animationFrameIdRef.current = animId;
         return;
       }
 
@@ -2350,13 +2381,18 @@ export default function App() {
 
       // Continue game execution frames
       animId = requestAnimationFrame(gameLoop);
+      animationFrameIdRef.current = animId;
     };
 
     // Begin looping
     animId = requestAnimationFrame(gameLoop);
+    animationFrameIdRef.current = animId;
 
     return () => {
       cancelAnimationFrame(animId);
+      if (animationFrameIdRef.current === animId) {
+        animationFrameIdRef.current = null;
+      }
     };
   }, [gameState, isMobile]);
 
