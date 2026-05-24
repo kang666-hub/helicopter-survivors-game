@@ -20,6 +20,28 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { GameState, Player, Enemy, Bullet, FireTrail, BatteryItem, Particle, UpgradeOption, WeaponState } from './types';
 
+interface Achievement {
+  id: string;
+  title: string;
+  description: string;
+  icon: string;
+}
+
+const ACHIEVEMENTS_LIST: Achievement[] = [
+  {
+    id: 'survive_3min',
+    title: '🏆 無盡生存大師',
+    description: '成功在直升機槍林彈雨中生存滿 3 分鐘！',
+    icon: '⏳'
+  },
+  {
+    id: 'kill_500',
+    title: '💀 空中點陣霸主',
+    description: '累計擊殺 500 架敵方無人機，制霸點陣天空！',
+    icon: '🔥'
+  }
+];
+
 export default function App() {
   // Canvas and loop triggers
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -41,6 +63,45 @@ export default function App() {
   const [bossHp, setBossHp] = useState<number>(0);
   const [bossMaxHp, setBossMaxHp] = useState<number>(1000);
   const [activeEvolutions, setActiveEvolutions] = useState<string[]>([]);
+  
+  // Achievement States
+  const [toasts, setToasts] = useState<(Achievement & { keyId: string })[]>([]);
+  const unlockedRef = useRef<{ [key: string]: boolean }>({
+    survive_3min: false,
+    kill_500: false,
+  });
+
+  // Load unlocked state from localStorage
+  useEffect(() => {
+    try {
+      unlockedRef.current.survive_3min = localStorage.getItem('ach_survive_3min') === 'true';
+      unlockedRef.current.kill_500 = localStorage.getItem('ach_kill_500') === 'true';
+    } catch (e) {
+      console.warn("Storage load failed: ", e);
+    }
+  }, []);
+
+  const unlockAchievement = (id: string) => {
+    try {
+      const saved = localStorage.getItem(`ach_${id}`);
+      if (saved === 'true') return;
+      localStorage.setItem(`ach_${id}`, 'true');
+    } catch (e) {
+      console.warn("Storage save failed: ", e);
+    }
+
+    const ach = ACHIEVEMENTS_LIST.find(a => a.id === id);
+    if (ach) {
+      const keyId = `${id}-${Date.now()}`;
+      setToasts(prev => [...prev, { ...ach, keyId }]);
+      playSound('power'); // Cool sci-fi buzz noise to draw player focus
+
+      // Setup removal timers
+      setTimeout(() => {
+        setToasts(prev => prev.filter(t => t.keyId !== keyId));
+      }, 5000);
+    }
+  };
   
   // Controls reference
   const keysRef = useRef<{ [key: string]: boolean }>({});
@@ -569,6 +630,16 @@ export default function App() {
       frameCountRef.current += 1;
       p.timeElapsed += deltaTime;
       setGameTime(Math.floor(p.timeElapsed));
+
+      // Dynamic achievement unlock check
+      if (!unlockedRef.current.survive_3min && p.timeElapsed >= 180) {
+        unlockedRef.current.survive_3min = true;
+        unlockAchievement('survive_3min');
+      }
+      if (!unlockedRef.current.kill_500 && p.kills >= 500) {
+        unlockedRef.current.kill_500 = true;
+        unlockAchievement('kill_500');
+      }
 
       if (playerInvincibleTicksRef.current > 0) {
         playerInvincibleTicksRef.current -= 1;
@@ -1187,6 +1258,77 @@ export default function App() {
         // Apply physical coordinates
         e.x += e.vx;
         e.y += e.vy;
+
+        // Dynamic engine trail particles for Boss and Escorts when moving
+        const speedSquared = e.vx * e.vx + e.vy * e.vy;
+        if (speedSquared > 0.01) {
+          if (e.type === 'boss') {
+            const hw = e.width / 2;
+            const hh = e.height / 2;
+            // Spawn smoke at left & right reactor locations
+            // Left nozzle: x: -8, y: hh - 6
+            // Right nozzle: x: 8, y: hh - 6
+            const leftNozzleX = e.x - 8;
+            const leftNozzleY = e.y + hh - 6;
+            const rightNozzleX = e.x + 8;
+            const rightNozzleY = e.y + hh - 6;
+
+            const purpleColors = ['#4c1d95', '#5b21b6', '#6d28d9', '#701a75', '#86198f', '#3b0764'];
+            
+            // Loop for both nozzles
+            [ {x: leftNozzleX, y: leftNozzleY}, {x: rightNozzleX, y: rightNozzleY} ].forEach(nozzle => {
+              if (Math.random() < 0.8) {
+                particlesRef.current.push({
+                  x: nozzle.x + (Math.random() - 0.5) * 4,
+                  y: nozzle.y + (Math.random() - 0.5) * 4,
+                  // Slow drift opposite to movement plus slight upward flow
+                  vx: -e.vx * 0.35 + (Math.random() - 0.5) * 0.8,
+                  vy: -e.vy * 0.35 - 0.5 + (Math.random() - 0.5) * 0.8,
+                  color: purpleColors[Math.floor(Math.random() * purpleColors.length)],
+                  size: 2.5 + Math.random() * 3.5,
+                  life: 0.8 + Math.random() * 0.4,
+                  decay: 0.015 + Math.random() * 0.015
+                });
+              }
+            });
+          }
+          else if (e.type === 'fast_drone') {
+            // Fast escorts get bright neon/orange thruster micro trail
+            if (Math.random() < 0.4) {
+              const hw = e.width / 2;
+              const hh = e.height / 2;
+              const orangeColors = ['#fb923c', '#ea580c', '#f97316', '#ffedd5'];
+              particlesRef.current.push({
+                x: e.x - (e.vx / e.speed) * hw + (Math.random() - 0.5) * 2,
+                y: e.y - (e.vy / e.speed) * hh + (Math.random() - 0.5) * 2,
+                vx: -e.vx * 0.4 + (Math.random() - 0.5) * 0.5,
+                vy: -e.vy * 0.4 + (Math.random() - 0.5) * 0.5,
+                color: orangeColors[Math.floor(Math.random() * orangeColors.length)],
+                size: 1.5 + Math.random() * 2.0,
+                life: 0.5 + Math.random() * 0.3,
+                decay: 0.02 + Math.random() * 0.02
+              });
+            }
+          }
+          else if (e.type === 'shield_drone') {
+            // Shield escorts (stone gray heavy shield) get green emerald/gray smoke trail
+            if (Math.random() < 0.4) {
+              const hw = e.width / 2;
+              const hh = e.height / 2;
+              const shieldColors = ['#44403c', '#22c55e', '#15803d', '#a8a29e'];
+              particlesRef.current.push({
+                x: e.x - (e.vx / e.speed) * hw + (Math.random() - 0.5) * 4,
+                y: e.y - (e.vy / e.speed) * hh + (Math.random() - 0.5) * 4,
+                vx: -e.vx * 0.2 + (Math.random() - 0.5) * 0.4,
+                vy: -e.vy * 0.2 + (Math.random() - 0.5) * 0.4,
+                color: shieldColors[Math.floor(Math.random() * shieldColors.length)],
+                size: 2.0 + Math.random() * 2.5,
+                life: 0.6 + Math.random() * 0.3,
+                decay: 0.02 + Math.random() * 0.02
+              });
+            }
+          }
+        }
 
         // Update Boss HUD HP indicator
         if (e.type === 'boss') {
@@ -2377,6 +2519,36 @@ export default function App() {
 
         </div>
 
+      </div>
+
+      {/* 簡易成就彈出式提醒 */}
+      <div id="achievement_toasts_container" className="fixed top-6 right-6 z-50 flex flex-col gap-3 pointer-events-none">
+        <AnimatePresence>
+          {toasts.map(toast => (
+            <motion.div
+              key={toast.keyId}
+              className="pointer-events-auto flex items-start gap-4 bg-slate-950/95 border border-yellow-500/50 p-4 rounded-xl shadow-[0_0_20px_rgba(234,179,8,0.2)] backdrop-blur-md w-80 relative overflow-hidden text-left"
+              initial={{ opacity: 0, x: 100, scale: 0.9 }}
+              animate={{ opacity: 1, x: 0, scale: 1 }}
+              exit={{ opacity: 0, x: 50, scale: 0.9, transition: { duration: 0.2 } }}
+              layout
+            >
+              {/* Top border glowing highlight bar */}
+              <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-yellow-500 via-amber-400 to-yellow-500" />
+              
+              <div className="h-11 w-11 shrink-0 bg-yellow-500/15 border border-yellow-500/30 rounded-lg flex items-center justify-center text-2xl font-black shadow-inner">
+                {toast.icon}
+              </div>
+              <div className="flex-1">
+                <span className="text-[10px] text-yellow-500 font-mono font-bold tracking-widest uppercase flex items-center gap-1">
+                  ✨ 成就解鎖 / ACHIEVEMENT ✨
+                </span>
+                <h4 className="text-sm font-black text-white leading-tight mt-1">{toast.title}</h4>
+                <p className="text-xs text-slate-400 font-mono mt-1.5 leading-relaxed">{toast.description}</p>
+              </div>
+            </motion.div>
+          ))}
+        </AnimatePresence>
       </div>
     </div>
   );
