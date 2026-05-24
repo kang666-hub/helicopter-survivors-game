@@ -487,8 +487,8 @@ export default function App() {
     };
   }, [gameState]);
 
-  // Set initial game parameters
-  const initiateGame = () => {
+  // Set initial game parameters and completely reset all state values (combat items, bullets, enemies)
+  const resetGame = () => {
     // Reset mutable refs
     const p = playerRef.current;
     p.vehicleType = selectedVehicle;
@@ -548,6 +548,10 @@ export default function App() {
     playSound('power');
     isPlayingRef.current = true;
     changeGameState('PLAYING');
+  };
+
+  const initiateGame = () => {
+    resetGame();
   };
 
   // Explosion Particle Spawning Utility
@@ -712,7 +716,7 @@ export default function App() {
     }
 
     setUpgradeOptions(pickedOptions.slice(0, 3));
-    setGameState('UPGRADE');
+    changeGameState('UPGRADE');
   };
 
   // Perform specific Upgrade / Evolution choice from menu selection
@@ -786,7 +790,7 @@ export default function App() {
     setHudMaxHp(p.maxHp);
 
     // Return to main battle
-    setGameState('PLAYING');
+    changeGameState('PLAYING');
     lastTimeRef.current = Date.now();
     isPlayingRef.current = true;
   };
@@ -2307,14 +2311,14 @@ export default function App() {
         ctx.strokeStyle = joy.active ? 'rgba(34, 211, 238, 0.6)' : 'rgba(148, 163, 184, 0.35)';
         ctx.lineWidth = 3;
         ctx.beginPath();
-        ctx.arc(joy.baseX, joy.baseY, 50, 0, Math.PI * 2);
+        ctx.arc(joy.baseX, joy.baseY, 60, 0, Math.PI * 2);
         ctx.stroke();
 
         // 8-directional coordinate helper dots for cyber feel
         ctx.fillStyle = joy.active ? 'rgba(34, 211, 238, 0.4)' : 'rgba(148, 163, 184, 0.2)';
         for (let a = 0; a < 8; a++) {
           const helperAngle = (a * Math.PI) / 4;
-          const hOffset = 50;
+          const hOffset = 60;
           ctx.fillRect(
             joy.baseX + Math.cos(helperAngle) * hOffset - 2,
             joy.baseY + Math.sin(helperAngle) * hOffset - 2,
@@ -2326,13 +2330,13 @@ export default function App() {
         // Draw Inner Interactive Thumb Stick Nob
         ctx.fillStyle = joy.active ? '#22d3ee' : 'rgba(148, 163, 184, 0.5)';
         ctx.beginPath();
-        ctx.arc(joy.curX, joy.curY, 20, 0, Math.PI * 2);
+        ctx.arc(joy.curX, joy.curY, 25, 0, Math.PI * 2);
         ctx.fill();
 
         // Glowing cyan dot accent on the center of thumb stick
         ctx.fillStyle = '#ffffff';
         ctx.beginPath();
-        ctx.arc(joy.curX, joy.curY, 6, 0, Math.PI * 2);
+        ctx.arc(joy.curX, joy.curY, 7, 0, Math.PI * 2);
         ctx.fill();
         
         // Connect trace line from base to center thumb
@@ -2902,7 +2906,7 @@ export default function App() {
                     </div>
 
                     <button 
-                      onClick={initiateGame}
+                      onClick={resetGame}
                       id="restart_mission_btn"
                       className="w-full bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-500 hover:to-rose-600 text-white font-display font-black text-lg py-3 px-6 rounded-md hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg shadow-rose-950/40 uppercase tracking-widest block"
                     >
