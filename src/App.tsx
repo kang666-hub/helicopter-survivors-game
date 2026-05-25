@@ -103,7 +103,7 @@ export default function App() {
     <HelicopterGame
       key={gameKey}
       onHardReset={handleRestart}
-      initialGameState={startState?.gameState ?? 'START'}
+      initialGameState={startState?.gameState ?? 'START_MENU'}
       initialVehicle={startState?.vehicle ?? 'AH64'}
     />
   );
@@ -1041,18 +1041,33 @@ function HelicopterGame({
               eheight = 18;
               scoreVal = 40;
             } else {
-              // Roll among Type A, B, and C
+              // Roll among Type A, B, and C based on early-game rebalancing
               const subRoll = Math.random();
-              if (subRoll < 0.60) {
-                // Type A: 偵察無人機 (Green, Small) - 佔比最高 (60%)
+              
+              let typeAProb = 0.60;
+              let typeBProb = 0.85; // This means 60%~85% is Type B (25%)
+              
+              if (elapsedSeconds < 60) {
+                typeAProb = 0.80;
+                if (elapsedSeconds < 45) {
+                  // Before 45s, no shield_drone allowed (Type C), so Type B takes the remaining 20%
+                  typeBProb = 1.0;
+                } else {
+                  // 45s ~ 60s: Type B 10%, Type C 10%
+                  typeBProb = 0.90;
+                }
+              }
+
+              if (subRoll < typeAProb) {
+                // Type A: 偵察無人機 (Green, Small) - 基礎血量調降至 1 (一發即爆)
                 etype = 'drone';
-                ehp = 10;
+                ehp = 1;
                 espeed = 1.0; // Speed 20 * 0.05 = 1.0
                 ewidth = 14;
                 eheight = 14;
                 scoreVal = 10;
-              } else if (subRoll < 0.85) {
-                // Type B: 自殺突擊機 (Yellow, Small) - 25%
+              } else if (subRoll < typeBProb) {
+                // Type B: 自殺突擊機 (Yellow, Small)
                 etype = 'fast_drone';
                 ehp = 5;
                 espeed = 3.5; // Speed 70 * 0.05 = 3.5
@@ -1060,7 +1075,7 @@ function HelicopterGame({
                 eheight = 11;
                 scoreVal = 15;
               } else {
-                // Type C: 重型裝甲機 (Dark Red, Large) - 15%
+                // Type C: 重型裝甲機 (Dark Red, Large) - 初次現身 45 秒後
                 etype = 'shield_drone';
                 ehp = 50;
                 espeed = 1.5; // Speed 30 * 0.05 = 1.5
@@ -1071,6 +1086,7 @@ function HelicopterGame({
             }
 
             // Apply calculated Dynamic Time Scaling (difficulty curve multipliers)
+            // But ensure Type A hp starts strictly at 1. Since hpScale starts at 1.0, 1 * 1.0 = 1.
             const finalHp = Math.max(1, Math.round(ehp * hpScale));
             const finalSpeed = espeed * enemySpeedScale;
 
@@ -1093,9 +1109,9 @@ function HelicopterGame({
         }
       }
 
-      // Check Mini-Boss Spawn (at 5x heavy drone specs) at 60 and 120 seconds respectively
+      // Check Mini-Boss Spawn (at 5x heavy drone specs) at 60, 120, 180, 240 seconds respectively
       const currentSpawningSec = Math.floor(elapsedSeconds);
-      if ((currentSpawningSec === 60 || currentSpawningSec === 120) && !spawnedMiniBossesRef.current.includes(currentSpawningSec)) {
+      if ([60, 120, 180, 240].includes(currentSpawningSec) && !spawnedMiniBossesRef.current.includes(currentSpawningSec)) {
         spawnedMiniBossesRef.current.push(currentSpawningSec);
         playSound('boss_spawn');
         
@@ -1120,8 +1136,9 @@ function HelicopterGame({
         });
       }
 
-      // Check Boss Spawn at exactly 2 minutes (120 seconds) - spawning once
-      if (Math.floor(elapsedSeconds) >= 120 && !bossActive && !enemiesRef.current.some(e => e.type === 'boss')) {
+      // Check Boss Spawn at exactly 300 seconds (5 minutes)
+      if (Math.floor(elapsedSeconds) >= 300 && !bossActive && !enemiesRef.current.some(e => e.type === 'boss') && !spawnedMiniBossesRef.current.includes(300)) {
+        spawnedMiniBossesRef.current.push(300); // Record to prevent immediate infinite respawns if we want only once
         setBossActive(true);
         playSound('boss_spawn');
         // Spawn Bomber Boss directly in center ring, slightly above player
@@ -2965,6 +2982,15 @@ function HelicopterGame({
                 className="block max-w-full h-auto rounded outline-none selection:bg-transparent"
               />
 
+              {/* WARNING OVERLAY */}
+              {gameState === 'PLAYING' && [60, 120, 180, 240, 300].some(s => s > gameTime && s - gameTime <= 5) && (
+                <div className="absolute top-1/4 left-0 right-0 w-full text-center z-40 pointer-events-none">
+                  <h2 className="text-4xl md:text-5xl font-black text-red-500 tracking-[0.2em] font-display animate-pulse text-shadow-[0_0_30px_rgba(239,68,68,1)] uppercase">
+                    WARNING: ELITE UNIT APPROACHING
+                  </h2>
+                </div>
+              )}
+
               {/* GAMEPLAY OVERLAY HUD IN THE CANVAS FRAME */}
               {gameState === 'PLAYING' && (
                 <div className="absolute inset-0 pointer-events-none p-3.5 flex flex-col justify-between select-none">
@@ -3081,7 +3107,22 @@ function HelicopterGame({
               {/* OVERLAYS SYSTEM - MENU SCREENS AND DIALOGS */}
               
               {/* START INITIAL MENU OVERLAY */}
-              {gameState === 'START' && (
+              {gameState === 'START_MENU' && (
+                <div id="start_screen_overlay" className="absolute inset-0 bg-slate-950/98 flex flex-col items-center justify-center p-4 text-center z-30 backdrop-blur">
+                  <h2 className="game-title text-4xl md:text-6xl font-black text-white tracking-widest leading-none mb-10 text-shadow-lg">
+                    戰機武裝：<span className="text-transparent bg-clip-text bg-gradient-to-r from-teal-400 via-cyan-400 to-yellow-300">無盡突圍</span>
+                  </h2>
+                  <button 
+                    onClick={() => { playSound('power'); changeGameState('CHARACTER_SELECT'); }}
+                    className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xl md:text-2xl py-4 px-12 md:px-16 rounded-xl shadow-[0_0_20px_rgba(16,185,129,0.4)] hover:scale-105 active:scale-95 transition-all uppercase tracking-widest"
+                  >
+                    啟動直升機推進器 / START ENGINE
+                  </button>
+                </div>
+              )}
+
+              {/* CHARACTER SELECTION OVERLAY */}
+              {gameState === 'CHARACTER_SELECT' && (
                 <div id="start_screen_overlay" className="absolute inset-x-0 inset-y-0 bg-slate-950/98 flex flex-col items-center justify-center p-4 text-center z-20 backdrop-blur overflow-y-auto">
                   
                   {/* Outer Main Heading Header */}
