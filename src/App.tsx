@@ -3138,7 +3138,7 @@ function HelicopterGame({
                     戰機武裝：<span className="text-transparent bg-clip-text bg-gradient-to-r from-teal-400 via-cyan-400 to-yellow-300">無盡突圍</span>
                   </h2>
                   <button 
-                    onClick={() => { console.log('Button clicked!'); playSound('power'); changeGameState('VEHICLE_SELECTION'); }}
+                    onClick={() => { console.log('START_BTN_CLICKED'); playSound('power'); changeGameState('VEHICLE_SELECTION'); }}
                     className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xl md:text-2xl py-4 px-12 md:px-16 rounded-xl shadow-[0_0_20px_rgba(16,185,129,0.4)] hover:scale-105 active:scale-95 transition-all uppercase tracking-widest"
                   >
                     啟動直升機推進器 / START ENGINE
@@ -3185,7 +3185,7 @@ function HelicopterGame({
                         <div className="space-y-2">
                           {/* AH-64 CARDS */}
                           <button
-                            onClick={() => { setSelectedVehicle('AH64'); playSound('power'); }}
+                            onClick={() => { console.log('VEHICLE_SELECTED'); setSelectedVehicle('AH64'); playSound('power'); }}
                             className={`w-full text-left p-2 rounded-lg border flex items-center gap-2.5 transition-all ${selectedVehicle === 'AH64' ? 'bg-emerald-950/30 border-emerald-500 shadow-md shadow-emerald-500/10' : 'bg-slate-900/60 border-slate-800 hover:border-slate-700 hover:bg-slate-800'}`}
                           >
                             <span className="text-xl">🟢</span>
@@ -3202,7 +3202,7 @@ function HelicopterGame({
 
                           {/* F-22 RAPTOR CARD */}
                           <button
-                            onClick={() => { setSelectedVehicle('F22'); playSound('power'); }}
+                            onClick={() => { console.log('VEHICLE_SELECTED'); setSelectedVehicle('F22'); playSound('power'); }}
                             className={`w-full text-left p-2 rounded-lg border flex items-center gap-2.5 transition-all ${selectedVehicle === 'F22' ? 'bg-cyan-950/30 border-cyan-500 shadow-md shadow-cyan-500/10' : 'bg-slate-900/60 border-slate-800 hover:border-slate-700 hover:bg-slate-800'}`}
                           >
                             <span className="text-xl">🔵</span>
@@ -3219,7 +3219,7 @@ function HelicopterGame({
 
                           {/* AC-130 CARD */}
                           <button
-                            onClick={() => { setSelectedVehicle('AC130'); playSound('power'); }}
+                            onClick={() => { console.log('VEHICLE_SELECTED'); setSelectedVehicle('AC130'); playSound('power'); }}
                             className={`w-full text-left p-2 rounded-lg border flex items-center gap-2.5 transition-all ${selectedVehicle === 'AC130' ? 'bg-fuchsia-950/30 border-fuchsia-500 shadow-md shadow-fuchsia-500/10' : 'bg-slate-900/60 border-slate-800 hover:border-slate-700 hover:bg-slate-800'}`}
                           >
                             <span className="text-xl">🟣</span>
@@ -3238,7 +3238,7 @@ function HelicopterGame({
 
                       <div className="space-y-2 mt-1">
                         <button
-                          onClick={initiateGame}
+                          onClick={() => { console.log('INITIATE_GAME'); initiateGame(); }}
                           id="commence_mission_btn"
                           className="w-full bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-black font-display font-black text-[13px] py-2.5 px-4 rounded-md hover:scale-[1.01] active:scale-[0.99] transition-all shadow-lg shadow-teal-500/20 uppercase tracking-widest block text-center font-bold"
                         >
