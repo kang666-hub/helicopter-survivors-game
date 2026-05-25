@@ -87,19 +87,51 @@ export const VEHICLE_PRESETS: Record<VehicleType, VehicleConfig> = {
 };
 
 export default function App() {
+  const [gameKey, setGameKey] = useState(0);
+  const [startState, setStartState] = useState<{ gameState: GameState, vehicle: VehicleType } | null>(null);
+
+  const handleRestart = (keepVehicle?: VehicleType) => {
+    if (keepVehicle) {
+      setStartState({ gameState: 'PLAYING', vehicle: keepVehicle });
+    } else {
+      setStartState(null);
+    }
+    setGameKey(k => k + 1);
+  };
+
+  return (
+    <HelicopterGame
+      key={gameKey}
+      onHardReset={handleRestart}
+      initialGameState={startState?.gameState ?? 'START'}
+      initialVehicle={startState?.vehicle ?? 'AH64'}
+    />
+  );
+}
+
+function HelicopterGame({ 
+  onHardReset, 
+  initialGameState, 
+  initialVehicle 
+}: { 
+  key?: React.Key;
+  onHardReset: (vehicle?: VehicleType) => void;
+  initialGameState: GameState;
+  initialVehicle: VehicleType;
+}) {
   // Canvas and loop triggers
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   
   // React UI States
-  const [gameState, setGameState] = useState<GameState>('START');
-  const gameStateRef = useRef<GameState>('START');
+  const [gameState, setGameState] = useState<GameState>(initialGameState);
+  const gameStateRef = useRef<GameState>(initialGameState);
 
   const changeGameState = (state: GameState) => {
     gameStateRef.current = state;
     setGameState(state);
   };
 
-  const [selectedVehicle, setSelectedVehicle] = useState<VehicleType>('AH64');
+  const [selectedVehicle, setSelectedVehicle] = useState<VehicleType>(initialVehicle);
   const [isMobile, setIsMobile] = useState<boolean>(false);
   
   // Mobile touch joystick state ref
@@ -125,14 +157,16 @@ export default function App() {
     vy: 0,
   });
 
-  const [hudHp, setHudHp] = useState<number>(100);
-  const [hudMaxHp, setHudMaxHp] = useState<number>(100);
+  const initialPreset = VEHICLE_PRESETS[initialVehicle];
+
+  const [hudHp, setHudHp] = useState<number>(initialPreset.maxHp);
+  const [hudMaxHp, setHudMaxHp] = useState<number>(initialPreset.maxHp);
   const [hudLevel, setHudLevel] = useState<number>(1);
   const [hudXp, setHudXp] = useState<number>(0);
   const [hudMaxXp, setHudMaxXp] = useState<number>(10);
   const [hudKills, setHudKills] = useState<number>(0);
   const [gameTime, setGameTime] = useState<number>(0); // survived seconds
-  const [weapons, setWeapons] = useState<WeaponState[]>([]);
+  const [weapons, setWeapons] = useState<WeaponState[]>([{ type: initialPreset.initialWeapon, level: 1, cooldownTimer: 0 }]);
   const [upgradeOptions, setUpgradeOptions] = useState<UpgradeOption[]>([]);
   const [isMuted, setIsMuted] = useState<boolean>(false);
   const [shakeIntensity, setShakeIntensity] = useState<number>(0);
@@ -193,24 +227,25 @@ export default function App() {
   });
 
   // Game Engine Mutable References (to prevent React re-render lag)
-  const isPlayingRef = useRef<boolean>(false);
+  const isPlayingRef = useRef<boolean>(initialGameState === 'PLAYING');
   const worldSize = 2500; // Game world boundaries (2500 x 2500)
   
   const playerRef = useRef<Player>({
+    vehicleType: initialVehicle,
     x: 1250,
     y: 1250,
     vx: 0,
     vy: 0,
     radius: 20,
-    hp: 100,
-    maxHp: 100,
+    hp: initialPreset.maxHp,
+    maxHp: initialPreset.maxHp,
     level: 1,
     xp: 0,
     maxXp: 10,
     angle: 0,
     rotorAngle: 0,
     weapons: [
-      { type: 'machine_gun', level: 1, cooldownTimer: 0 }
+      { type: initialPreset.initialWeapon, level: 1, cooldownTimer: 0 }
     ],
     kills: 0,
     timeElapsed: 0,
@@ -502,83 +537,11 @@ export default function App() {
     };
   }, [gameState]);
 
-  // Set initial game parameters and completely reset all state values (combat items, bullets, enemies)
   const resetGame = () => {
-    // 1. Forcefully terminates any active or pending requestAnimationFrame synchronously
-    if (animationFrameIdRef.current !== null) {
-      cancelAnimationFrame(animationFrameIdRef.current);
-      animationFrameIdRef.current = null;
-    }
-
-    // 2. Reset mutable player references
-    const p = playerRef.current;
-    p.vehicleType = selectedVehicle;
-    p.x = worldSize / 2;
-    p.y = worldSize / 2;
-    p.vx = 0;
-    p.vy = 0;
-    
-    const preset = VEHICLE_PRESETS[selectedVehicle];
-    const startingMaxHp = preset.maxHp;
-    p.hp = startingMaxHp;
-    p.maxHp = startingMaxHp;
-    p.level = 1;
-    p.xp = 0;
-    p.maxXp = 10;
-    p.kills = 0;
-    p.timeElapsed = 0;
-    p.angle = 0;
-    p.rotorAngle = 0;
-    
-    // Auto preset initial weapons based on vehicle preset
-    p.weapons = [
-      { type: preset.initialWeapon, level: 1, cooldownTimer: 0 }
-    ];
-
-    // 3. Clear all game entities references in-place strictly using .length = 0 (Preserving actual array references to avoid stale closures in active frames)
-    if (enemiesRef.current) enemiesRef.current.length = 0;
-    if (bulletsRef.current) bulletsRef.current.length = 0;
-    if (trailsRef.current) trailsRef.current.length = 0;
-    if (batteriesRef.current) batteriesRef.current.length = 0;
-    if (particlesRef.current) particlesRef.current.length = 0;
-
-    frameCountRef.current = 0;
-    lastTimeRef.current = Date.now();
-    playerInvincibleTicksRef.current = 0;
-    droneAngleRef.current = 0;
-    magnetFlashRef.current = 0;
-
-    // Reset touch joystick if working
-    const joy = joystickRef.current;
-    joy.active = false;
-    joy.vx = 0;
-    joy.vy = 0;
-    joy.curX = joy.baseX;
-    joy.curY = joy.baseY;
-
-    // 4. Set React states to match reset values
-    setHudHp(startingMaxHp);
-    setHudMaxHp(startingMaxHp);
-    setHudLevel(1);
-    setHudXp(0);
-    setHudMaxXp(10);
-    setHudKills(0);
-    setGameTime(0);
-    setWeapons(p.weapons);
-    setBossActive(false);
-    setBossHp(0);
-    setBossMaxHp(1000);
-    setActiveEvolutions([]);
-    setShakeIntensity(0);
-
-    // 5. Play select confirm sound
     playSound('power');
-
-    // 6. Resume playing status and transition state to PLAYING
-    isPlayingRef.current = true;
-    changeGameState('PLAYING');
+    onHardReset(selectedVehicle);
   };
-
+  
   const initiateGame = () => {
     resetGame();
   };
@@ -3131,13 +3094,22 @@ export default function App() {
                       </div>
                     </div>
 
-                    <button 
-                      onClick={resetGame}
-                      id="restart_mission_btn"
-                      className="w-full bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-500 hover:to-rose-600 text-white font-display font-black text-lg py-3 px-6 rounded-md hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg shadow-rose-950/40 uppercase tracking-widest block"
-                    >
-                      重新啟動系統 / REDEPLOY
-                    </button>
+                    <div className="space-y-3 mt-4">
+                      <button 
+                        onClick={resetGame}
+                        id="restart_mission_btn"
+                        className="w-full bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-500 hover:to-rose-600 text-white font-display font-black text-lg py-3 px-6 rounded-md hover:scale-[1.02] active:scale-[0.98] transition-all shadow-lg shadow-rose-950/40 uppercase tracking-widest block"
+                      >
+                        重新啟動系統 / REDEPLOY
+                      </button>
+                      <button 
+                        onClick={() => { playSound('power'); onHardReset(); }}
+                        id="return_hangar_btn"
+                        className="w-full bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-700 hover:border-slate-500 font-display font-bold text-sm py-2 px-6 rounded-md transition-all tracking-wider block"
+                      >
+                        返回機庫 / RETURN TO HANGAR
+                      </button>
+                    </div>
                   </motion.div>
                 </div>
               )}
