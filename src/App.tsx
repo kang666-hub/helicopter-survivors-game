@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { 
   Shield, 
   Target, 
@@ -88,24 +88,20 @@ export const VEHICLE_PRESETS: Record<VehicleType, VehicleConfig> = {
 
 export default function App() {
   const [gameKey, setGameKey] = useState(0);
-  const [startState, setStartState] = useState<{ gameState: GameState, vehicle: VehicleType } | null>(null);
 
-  const handleRestart = (keepVehicle?: VehicleType) => {
-    if (keepVehicle) {
-      setStartState({ gameState: 'PLAYING', vehicle: keepVehicle });
-    } else {
-      setStartState(null);
-    }
+  const handleRestart = useCallback(() => {
     setGameKey(k => k + 1);
-  };
+  }, []);
 
   return (
-    <HelicopterGame
-      key={gameKey}
-      onHardReset={handleRestart}
-      initialGameState={startState?.gameState ?? 'START_MENU'}
-      initialVehicle={startState?.vehicle ?? 'AH64'}
-    />
+    <div className="w-full h-screen bg-black overflow-hidden flex items-center justify-center font-sans relative">
+      <HelicopterGame
+        key={gameKey}
+        onHardReset={handleRestart}
+        initialGameState={gameKey === 0 ? 'START_MENU' : 'VEHICLE_SELECTION'}
+        initialVehicle="AH64"
+      />
+    </div>
   );
 }
 
@@ -115,7 +111,7 @@ function HelicopterGame({
   initialVehicle 
 }: { 
   key?: React.Key;
-  onHardReset: (vehicle?: VehicleType) => void;
+  onHardReset: () => void;
   initialGameState: GameState;
   initialVehicle: VehicleType;
 }) {
@@ -424,7 +420,7 @@ function HelicopterGame({
       // Global or GAMEOVER state space check to redeploy/restart game
       if ((e.key === ' ' || e.code === 'Space') && gameStateRef.current === 'GAMEOVER') {
         e.preventDefault();
-        resetGame();
+        onHardReset();
       }
     };
     const handleKeyUp = (e: KeyboardEvent) => {
@@ -438,7 +434,7 @@ function HelicopterGame({
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, []);
+  }, [onHardReset]);
 
   // Detect Touch / Mobile Devices and bind joystick touch controller events
   useEffect(() => {
@@ -546,11 +542,39 @@ function HelicopterGame({
 
   const resetGame = () => {
     playSound('power');
-    onHardReset(selectedVehicle);
+    onHardReset();
   };
   
   const initiateGame = () => {
-    resetGame();
+    playSound('power');
+    const preset = vehiclePresets[selectedVehicle];
+    playerRef.current = {
+      vehicleType: selectedVehicle,
+      x: 1250,
+      y: 1250,
+      vx: 0,
+      vy: 0,
+      radius: 20,
+      hp: preset.maxHp,
+      maxHp: preset.maxHp,
+      level: 1,
+      xp: 0,
+      maxXp: 10,
+      angle: 0,
+      rotorAngle: 0,
+      weapons: [
+        { type: preset.initialWeapon, level: 1, cooldownTimer: 0 }
+      ],
+      kills: 0,
+    };
+    
+    setHudHp(preset.maxHp);
+    setHudMaxHp(preset.maxHp);
+    setWeapons([...playerRef.current.weapons]);
+    
+    changeGameState('PLAYING');
+    lastTimeRef.current = Date.now();
+    isPlayingRef.current = true;
   };
 
   // Explosion Particle Spawning Utility
@@ -3113,7 +3137,7 @@ function HelicopterGame({
                     戰機武裝：<span className="text-transparent bg-clip-text bg-gradient-to-r from-teal-400 via-cyan-400 to-yellow-300">無盡突圍</span>
                   </h2>
                   <button 
-                    onClick={() => { playSound('power'); changeGameState('CHARACTER_SELECT'); }}
+                    onClick={() => { playSound('power'); changeGameState('VEHICLE_SELECTION'); }}
                     className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xl md:text-2xl py-4 px-12 md:px-16 rounded-xl shadow-[0_0_20px_rgba(16,185,129,0.4)] hover:scale-105 active:scale-95 transition-all uppercase tracking-widest"
                   >
                     啟動直升機推進器 / START ENGINE
@@ -3122,7 +3146,7 @@ function HelicopterGame({
               )}
 
               {/* CHARACTER SELECTION OVERLAY */}
-              {gameState === 'CHARACTER_SELECT' && (
+              {gameState === 'VEHICLE_SELECTION' && (
                 <div id="start_screen_overlay" className="absolute inset-x-0 inset-y-0 bg-slate-950/98 flex flex-col items-center justify-center p-4 text-center z-20 backdrop-blur overflow-y-auto">
                   
                   {/* Outer Main Heading Header */}

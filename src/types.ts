@@ -1,6 +1,6 @@
 // Game Types and Interfaces
 
-export type GameState = 'START_MENU' | 'CHARACTER_SELECT' | 'PLAYING' | 'UPGRADE' | 'GAMEOVER' | 'VICTORY' | 'SLOT_MACHINE';
+export type GameState = 'START_MENU' | 'VEHICLE_SELECTION' | 'PLAYING' | 'UPGRADE' | 'GAMEOVER' | 'VICTORY' | 'SLOT_MACHINE';
 
 export interface WeaponState {
   type: 'machine_gun' | 'homing_missile' | 'flare' | 'evo_pierce' | 'evo_drones';
