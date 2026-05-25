@@ -547,7 +547,7 @@ function HelicopterGame({
   
   const initiateGame = () => {
     playSound('power');
-    const preset = vehiclePresets[selectedVehicle];
+    const preset = VEHICLE_PRESETS[selectedVehicle];
     playerRef.current = {
       vehicleType: selectedVehicle,
       x: 1250,
@@ -2820,8 +2820,8 @@ function HelicopterGame({
     animationFrameIdRef.current = animId;
 
     return () => {
-      cancelAnimationFrame(animId);
-      if (animationFrameIdRef.current === animId) {
+      if (animationFrameIdRef.current !== null) {
+        cancelAnimationFrame(animationFrameIdRef.current);
         animationFrameIdRef.current = null;
       }
     };
