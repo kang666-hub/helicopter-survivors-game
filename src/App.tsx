@@ -546,6 +546,7 @@ function HelicopterGame({
   };
   
   const initiateGame = () => {
+    console.log("Button clicked! (Commence Deployment)");
     playSound('power');
     const preset = VEHICLE_PRESETS[selectedVehicle];
     playerRef.current = {
@@ -3137,7 +3138,7 @@ function HelicopterGame({
                     戰機武裝：<span className="text-transparent bg-clip-text bg-gradient-to-r from-teal-400 via-cyan-400 to-yellow-300">無盡突圍</span>
                   </h2>
                   <button 
-                    onClick={() => { playSound('power'); changeGameState('VEHICLE_SELECTION'); }}
+                    onClick={() => { console.log('Button clicked!'); playSound('power'); changeGameState('VEHICLE_SELECTION'); }}
                     className="bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-xl md:text-2xl py-4 px-12 md:px-16 rounded-xl shadow-[0_0_20px_rgba(16,185,129,0.4)] hover:scale-105 active:scale-95 transition-all uppercase tracking-widest"
                   >
                     啟動直升機推進器 / START ENGINE
