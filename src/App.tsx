@@ -561,6 +561,7 @@ function HelicopterGame({
       radius: 20,
       hp: preset.maxHp,
       maxHp: preset.maxHp,
+      shield: 0,
       level: 1,
       xp: 0,
       maxXp: 10,
@@ -616,105 +617,64 @@ function HelicopterGame({
     const currentWeapons = p.weapons;
     const options: UpgradeOption[] = [];
 
-    const mg = currentWeapons.find(w => w.type === 'machine_gun');
-    const ms = currentWeapons.find(w => w.type === 'homing_missile');
-    const fl = currentWeapons.find(w => w.type === 'flare');
-    const ep = currentWeapons.find(w => w.type === 'evo_pierce');
-    const ed = currentWeapons.find(w => w.type === 'evo_drones');
+    // Dictionary system for checking weapon levels quickly
+    const wLevels: Record<string, number> = {};
+    currentWeapons.forEach(w => {
+      wLevels[w.type] = w.level;
+    });
 
-    // EVOLUTION CANDIDATE CHECKS
-    // Evo 1: 【5等機槍】+【5等熱焰彈】=【🔥 燃燒穿甲彈】
-    const qualifiesEvoPierce = mg && mg.level === 5 && fl && fl.level === 5 && !ep;
+    const EVOLUTION_RECIPES = [
+      { w1: 'machine_gun', w2: 'flare', result: 'evo_pierce', name: '🔥 燃燒穿甲彈 (Incendiary Pierce)', desc: '【超武進化】貫穿彈道附帶擴散紅炎，造成路徑持續範圍燒傷。', icon: '🔥' },
+      { w1: 'homing_missile', w2: 'fpv_drone', result: 'evo_drones', name: '🚀 浮游砲陣列 (Option Drone Array)', desc: '【超武進化】無間斷全自動編織微型追蹤導彈陣列！', icon: '🚀' },
+      { w1: 'hellfire', w2: 'flare', result: 'evo_doomsday', name: '☢️ 末日審判 (Doomsday Artillery)', desc: '【超武進化】全畫面隨機降下火砲轟炸，燒盡一切生命！', icon: '☢️' },
+      { w1: 'machine_gun', w2: 'fpv_drone', result: 'evo_laser_web', name: '⚡ 磁爆切割網 (Laser Web)', desc: '【超武進化】軌道大幅擴張，朝外射出致命貫穿雷射！', icon: '⚡' }
+    ];
 
-    // Evo 2: 【5等追蹤飛彈】+【5等（任意其他滿等武器）】=【🚀 浮游砲陣列】
-    // Any other max-level means: (mg is level 5) OR (fl is level 5) OR (ep exists/is evolved) or (ed exists/is evolved)
-    const otherWeaponMaxed = (mg && mg.level === 5) || (fl && fl.level === 5) || ep || ed;
-    const qualifiesEvoDrones = ms && ms.level === 5 && otherWeaponMaxed && !ed;
+    EVOLUTION_RECIPES.forEach(recipe => {
+      if (wLevels[recipe.w1] === 5 && wLevels[recipe.w2] === 5 && !wLevels[recipe.result]) {
+        options.push({
+          id: recipe.result,
+          type: recipe.result as any, // bypassing strict type checking here
+          title: recipe.name,
+          description: recipe.desc,
+          icon: recipe.icon,
+          isEvolution: true,
+          costDesc: `需求: ${recipe.w1} + ${recipe.w2} 雙滿等`
+        });
+      }
+    });
 
-    if (qualifiesEvoPierce) {
-      options.push({
-        id: 'evo_pierce',
-        type: 'evo_pierce',
-        title: '🔥 燃燒穿甲彈 (Incendiary Pierce)',
-        description: '【超武進化】極限射速！子彈具無限穿透力，並在飛行軌跡留下點陣紅炎，造成持續範圍燒傷。',
-        icon: '🔥',
-        isEvolution: true,
-        costDesc: '需要 5 等機槍與 5 等地空熱焰彈進行科技融合'
-      });
-    }
+    // We define standard weapons
+    const BASE_WEAPONS = [
+      { type: 'machine_gun', name: '機槍', icon: '🔫', descBase: '前向高速連發機槍。', descLvlUp: '射速與傷害提昇。', descLvl5: '【紅色雷射】極快連射光束！' },
+      { type: 'homing_missile', name: '追蹤飛彈', icon: '🎯', descBase: '解鎖重型雷達防衛，鎖定畫面最高血量目標。', descLvlUp: '威力提昇、冷卻縮短。', descLvl5: '【蜂群飛彈】4 枚飛彈拖著長白煙鎖定！' },
+      { type: 'flare', name: '熱焰彈', icon: '☀️', descBase: '周遭擴散撒下防禦干擾彈點燃敵人。', descLvlUp: '殺傷力與半徑提昇。', descLvl5: '【高溫藍火】半徑加倍，並滯留 4 秒高溫燃燒！' },
+      { type: 'fpv_drone', name: '環繞護衛機', icon: '🛸', descBase: '部署 2 架微型無人機，於周圍快速盤旋造成接觸傷害。', descLvlUp: '傷害增強、轉速加快。', descLvl5: '【磁爆陣線】增為 4 架，產生藍色電流絞殺網！' },
+      { type: 'hellfire', name: '地獄火飛彈', icon: '🌋', descBase: '單發極慢但威力毀滅的巨大飛彈，直接鎖定大型目標。', descLvlUp: '冷卻縮減、傷害極大化。', descLvl5: '【熔岩焦土】核爆後在原地留下 3 秒的岩漿池！' }
+    ];
 
-    if (qualifiesEvoDrones) {
-      options.push({
-        id: 'evo_drones',
-        type: 'evo_drones',
-        title: '🚀 浮游砲陣列 (Option Drone Array)',
-        description: '【超武進化】解鎖兩架永不墜毀的點陣僚機環繞身側，全天候全自動編織追蹤飛彈彈幕。',
-        icon: '🚀',
-        isEvolution: true,
-        costDesc: '需要 5 等追蹤飛彈與任意 5 等武器合力驅動'
-      });
-    }
-
-    // BASE WEAPON UPGRADES or UNLOCKS
-    // Machine Gun
-    if (mg && mg.level < 5) {
-      options.push({
-        id: 'mg_up',
-        type: 'machine_gun',
-        title: `機槍增量 Lv.${mg.level} -> Lv.${mg.level + 1}`,
-        description: mg.level === 4 
-          ? '【極限提昇】機槍將雙管並射，火力極速全開。'
-          : `傷害提昇並改良內部機構，冷卻時段縮短 15%。`,
-        icon: '🔫',
-        isEvolution: false
-      });
-    }
-
-    // Homing Missile
-    if (!ms) {
-      options.push({
-        id: 'ms_unlock',
-        type: 'homing_missile',
-        title: '研發追蹤飛彈 (Unlock Homing Missile)',
-        description: '解鎖重型雷達防衛，每 3 秒自動鎖定場上血量最厚實的巨艦或精英發射高爆飛彈。',
-        icon: '🎯',
-        isEvolution: false
-      });
-    } else if (ms.level < 5) {
-      options.push({
-        id: 'ms_up',
-        type: 'homing_missile',
-        title: `追蹤飛彈 Lv.${ms.level} -> Lv.${ms.level + 1}`,
-        description: ms.level === 4
-          ? '【戰略覆蓋】冷卻時間更短，且一次同步發射 2 枚巨型飛彈。'
-          : `彈藥炸藥填充升級，破甲半徑提昇、裝填耗時減少。`,
-        icon: '🎯',
-        isEvolution: false
-      });
-    }
-
-    // Air Defense Flare
-    if (!fl) {
-      options.push({
-        id: 'fl_unlock',
-        type: 'flare',
-        title: '加裝制空熱焰彈 (Unlock Heat Flare)',
-        description: '安裝直升機側翼佈撒器，每 2.5 秒朝身體周圍八方播撒 8 枚制空攔截高溫熱焰彈。',
-        icon: '☀️',
-        isEvolution: false
-      });
-    } else if (fl.level < 5) {
-      options.push({
-        id: 'fl_up',
-        type: 'flare',
-        title: `制空熱焰彈 Lv.${fl.level} -> Lv.${fl.level + 1}`,
-        description: fl.level === 4
-          ? '【全天屏障】點陣高熱停留期間擴增一倍，熱焰阻絕網更巨大深邃。'
-          : `點火續燃時間追加、殺傷半徑進一步增幅。`,
-        icon: '☀️',
-        isEvolution: false
-      });
-    }
+    BASE_WEAPONS.forEach(bw => {
+      const curlvl = wLevels[bw.type] || 0;
+      if (curlvl === 0) {
+        options.push({
+          id: `${bw.type}_unlock`,
+          type: bw.type as any,
+          title: `解鎖 ${bw.name}`,
+          description: bw.descBase,
+          icon: bw.icon,
+          isEvolution: false
+        });
+      } else if (curlvl < 5) {
+        options.push({
+          id: `${bw.type}_up`,
+          type: bw.type as any,
+          title: `${bw.name} Lv.${curlvl} -> Lv.${curlvl + 1}`,
+          description: curlvl === 4 ? bw.descLvl5 : bw.descLvlUp,
+          icon: bw.icon,
+          isEvolution: false
+        });
+      }
+    });
 
     // Supplement support options so we always guarantee a nice pool
     options.push({
@@ -757,64 +717,34 @@ function HelicopterGame({
   const selectUpgrade = (opt: UpgradeOption) => {
     const p = playerRef.current;
     
-    switch (opt.type) {
-      case 'machine_gun': {
-        const mg = p.weapons.find(w => w.type === 'machine_gun');
-        if (mg) {
-          mg.level += 1;
-        } else {
-          p.weapons.push({ type: 'machine_gun', level: 1, cooldownTimer: 0 });
-        }
-        break;
-      }
-      
-      case 'homing_missile': {
-        const ms = p.weapons.find(w => w.type === 'homing_missile');
-        if (ms) {
-          ms.level += 1;
-        } else {
-          p.weapons.push({ type: 'homing_missile', level: 1, cooldownTimer: 0 });
-        }
-        break;
-      }
+    // EVOLUTION_RECIPES
+    const recipes: Record<string, {w1: string, w2: string, titleName: string}> = {
+      'evo_pierce': { w1: 'machine_gun', w2: 'flare', titleName: '燃燒穿甲彈 🔥' },
+      'evo_drones': { w1: 'homing_missile', w2: 'fpv_drone', titleName: '浮游砲陣列 🚀' },
+      'evo_doomsday': { w1: 'hellfire', w2: 'flare', titleName: '末日審判 ☢️' },
+      'evo_laser_web': { w1: 'machine_gun', w2: 'fpv_drone', titleName: '磁爆切割網 ⚡' },
+    };
 
-      case 'flare': {
-        const fl = p.weapons.find(w => w.type === 'flare');
-        if (fl) {
-          fl.level += 1;
-        } else {
-          p.weapons.push({ type: 'flare', level: 1, cooldownTimer: 0 });
-        }
-        break;
-      }
-
-      case 'evo_pierce': {
-        // Formula 1: Remove Machine Gun & Flare, replace with Evolved Pierce
-        p.weapons = p.weapons.filter(w => w.type !== 'machine_gun' && w.type !== 'flare');
-        p.weapons.push({ type: 'evo_pierce', level: 6, cooldownTimer: 0 }); // 6 acts as Evo
-        setActiveEvolutions(prev => [...prev, '燃燒穿甲彈 🔥']);
-        playSound('power');
-        break;
-      }
-
-      case 'evo_drones': {
-        // Formula 2: Remove Homing Missile, replace with Drone Array. Keep the other max-level weapon.
-        p.weapons = p.weapons.filter(w => w.type !== 'homing_missile');
-        p.weapons.push({ type: 'evo_drones', level: 6, cooldownTimer: 0 });
-        setActiveEvolutions(prev => [...prev, '浮游砲陣列 🚀']);
-        playSound('power');
-        break;
-      }
-
-      case 'heal': {
-        p.hp = Math.min(p.maxHp, p.hp + 50);
-        break;
-      }
-
-      case 'max_hp': {
-        p.maxHp += 20;
-        p.hp = p.maxHp;
-        break;
+    if (recipes[opt.type]) {
+      const rec = recipes[opt.type];
+      // Note: we just evolve by adding the new weapon, but typical Vampire Survivors doesn't remove base weapons necessarily! 
+      // Wait, original logic removed w.type !== 'homing_missile' or whatever. Let's consume both!
+      p.weapons = p.weapons.filter(w => w.type !== rec.w1 && w.type !== rec.w2);
+      p.weapons.push({ type: opt.type as any, level: 6, cooldownTimer: 0 }); // 6 acts as Evo
+      setActiveEvolutions(prev => [...prev, rec.titleName]);
+      playSound('power');
+    } else if (opt.type === 'heal') {
+      p.hp = Math.min(p.maxHp, p.hp + 50);
+    } else if (opt.type === 'max_hp') {
+      p.maxHp += 20;
+      p.hp = p.maxHp;
+    } else {
+      // Base Weapon Add or Upgrade
+      const w = p.weapons.find(w => w.type === opt.type);
+      if (w) {
+        w.level += 1;
+      } else {
+        p.weapons.push({ type: opt.type as any, level: 1, cooldownTimer: 0 });
       }
     }
 
@@ -846,11 +776,15 @@ function HelicopterGame({
       machine_gun: '🔫',
       homing_missile: '🎯',
       flare: '☀️',
+      fpv_drone: '🛸',
+      hellfire: '🌋',
     };
     const weaponNamesMap: Record<string, string> = {
       machine_gun: '自動化重機槍 / MACHINE GUN',
       homing_missile: '雷達追蹤飛彈 / HOMING MISSILE',
       flare: '側翼高熱熱焰彈 / HEAT FLARE',
+      fpv_drone: '環繞護衛機 / FPV DRONE',
+      hellfire: '地獄火飛彈 / HELLFIRE',
     };
 
     const rollList = candidates.length > 0 ? candidates : p.weapons;
@@ -1231,23 +1165,21 @@ function HelicopterGame({
                 // Bullet spawning details
                 const bulletSpd = 9;
                 
-                // If Level 5, shoot 2 bullets simultaneously with slight angular split!
+                // If Level 5, shoot Red Laser extremely fast!
                 if (weapon.level === 5) {
-                  const splitAngle = 0.08;
-                  const bTypes = [radians - splitAngle, radians + splitAngle];
-                  bTypes.forEach(angle => {
-                    bulletsRef.current.push({
-                      id: `mg-${Date.now()}-${Math.random()}`,
-                      x: p.x,
-                      y: p.y,
-                      vx: Math.cos(angle) * bulletSpd,
-                      vy: Math.sin(angle) * bulletSpd,
-                      radius: 3,
-                      damage: mgDamage[curLvlIdx],
-                      type: 'player_basic',
-                      penetration: 1
-                    });
+                  bulletsRef.current.push({
+                    id: `mg-${Date.now()}-${Math.random()}`,
+                    x: p.x,
+                    y: p.y,
+                    vx: Math.cos(radians) * 20, // super fast
+                    vy: Math.sin(radians) * 20,
+                    radius: 2, // thin line
+                    damage: mgDamage[curLvlIdx] * 0.8, // slight damage reduction but much faster rate
+                    type: 'player_laser',
+                    penetration: 3 // lasers pierce a few targets
                   });
+                  playSound('shoot');
+                  weapon.cooldownTimer = 0.08 * weaponCdMultiplier; // super fast 0.08s
                 } else {
                   // Standard single shot
                   bulletsRef.current.push({
@@ -1261,10 +1193,9 @@ function HelicopterGame({
                     type: 'player_basic',
                     penetration: 1
                   });
+                  playSound('shoot');
+                  weapon.cooldownTimer = mgCooldowns[curLvlIdx] * weaponCdMultiplier;
                 }
-                
-                playSound('shoot');
-                weapon.cooldownTimer = mgCooldowns[curLvlIdx] * weaponCdMultiplier;
               }
               break;
             }
@@ -1279,16 +1210,25 @@ function HelicopterGame({
               const sortedSorted = [...enemies].sort((a, b) => b.hp - a.hp);
               
               if (sortedSorted.length > 0) {
-                chosenEnemies.push(sortedSorted[0]);
-                if (weapon.level === 5 && sortedSorted.length > 1) {
-                  chosenEnemies.push(sortedSorted[1]); // lvl 5 shoots 2 highest HP targets!
+                if (weapon.level === 5) {
+                  // lvl 5 shoots 4 targets (swarm mode)
+                  for (let k = 0; k < 4; k++) {
+                    chosenEnemies.push(sortedSorted[k % sortedSorted.length]); // loops around if less than 4 enemies exist
+                  }
+                } else {
+                  chosenEnemies.push(sortedSorted[0]);
                 }
               }
 
               if (chosenEnemies.length > 0) {
-                chosenEnemies.forEach(ce => {
-                  const radians = Math.atan2(ce.y - p.y, ce.x - p.x);
-                  const missileSpeed = 6.2;
+                // To spread them out slightly at spawn for swarm look
+                chosenEnemies.forEach((ce, i) => {
+                  let offsetRads = 0;
+                  if (weapon.level === 5) {
+                    offsetRads = (i - 1.5) * 0.2; // slight fan layout
+                  }
+                  const radians = Math.atan2(ce.y - p.y, ce.x - p.x) + offsetRads;
+                  const missileSpeed = 6.2 + (weapon.level === 5 ? 1.5 : 0); // slightly faster at lv 5
                   bulletsRef.current.push({
                     id: `ms-${Date.now()}-${Math.random()}`,
                     x: p.x,
@@ -1320,6 +1260,10 @@ function HelicopterGame({
               const angleInc = (Math.PI * 2) / numFlares;
               const flareSpeed = 3.5;
 
+              const isBlueFire = weapon.level === 5;
+              const actualRadius = isBlueFire ? 15 : ((weapon.level >= 4) ? 9 : 6.5);
+              const actualDuration = isBlueFire ? 4.0 : flActiveDurations[curLvlIdx];
+
               for (let i = 0; i < numFlares; i++) {
                 const angle = i * angleInc;
                 bulletsRef.current.push({
@@ -1328,11 +1272,12 @@ function HelicopterGame({
                   y: p.y,
                   vx: Math.cos(angle) * flareSpeed,
                   vy: Math.sin(angle) * flareSpeed,
-                  radius: (weapon.level >= 4) ? 9 : 6.5,
-                  damage: flDamage[curLvlIdx],
+                  radius: actualRadius,
+                  damage: flDamage[curLvlIdx] * (isBlueFire ? 1.5 : 1), // blue fire burns hotter
                   type: 'player_flare',
-                  penetration: 6, // flare passes through many enemies as defense
-                  duration: flActiveDurations[curLvlIdx]
+                  penetration: isBlueFire ? 15 : 6, // passing through more
+                  duration: actualDuration,
+                  isHellfireLvl5: isBlueFire // Hack to pass blue flare info visually
                 });
               }
 
@@ -1417,6 +1362,61 @@ function HelicopterGame({
 
                 playSound('missile');
                 weapon.cooldownTimer = 1.0 * weaponCdMultiplier; // Shoot every 1 sec
+              }
+              break;
+            }
+            case 'hellfire': {
+              const hfCooldowns = [5.5, 5.0, 4.5, 4.0, 3.8];
+              const hfDamage = [200, 250, 300, 400, 500]; // Massive damage
+              const curLvlIdx = Math.min(hfCooldowns.length - 1, weapon.level - 1);
+
+              // Target highest HP
+              const sorted = [...enemies].sort((a, b) => b.hp - a.hp);
+              if (sorted.length > 0) {
+                const ce = sorted[0];
+                const radians = Math.atan2(ce.y - p.y, ce.x - p.x);
+                bulletsRef.current.push({
+                  id: `hf-${Date.now()}-${Math.random()}`,
+                  x: p.x,
+                  y: p.y,
+                  vx: Math.cos(radians) * 4.5, // Slow
+                  vy: Math.sin(radians) * 4.5,
+                  radius: 8,
+                  damage: hfDamage[curLvlIdx],
+                  type: 'player_hellfire',
+                  penetration: 1,
+                  angle: radians,
+                  isHellfireLvl5: weapon.level === 5
+                });
+                playSound('missile');
+                weapon.cooldownTimer = hfCooldowns[curLvlIdx] * weaponCdMultiplier;
+              }
+              break;
+            }
+
+            case 'evo_doomsday': {
+              // 全畫面隨機降下火砲轟炸 (Bombardment everywhere)
+              if (enemies.length > 0) {
+                // Randomly pick 3-4 enemies and drop bombs from sky
+                for (let k = 0; k < 4; k++) {
+                  const target = enemies[Math.floor(Math.random() * enemies.length)];
+                  // Drop a hellfire missile straight down or directly on their head
+                  bulletsRef.current.push({
+                    id: `dd-${Date.now()}-${Math.random()}`,
+                    x: target.x + (Math.random() - 0.5) * 50, // Slight offset
+                    y: target.y - 400, // spawn way above
+                    vx: 0,
+                    vy: 12, // fast fall
+                    radius: 10,
+                    damage: 600,
+                    type: 'player_hellfire',
+                    penetration: 1,
+                    angle: Math.PI / 2,
+                    isHellfireLvl5: true // Always leave scorched earth
+                  });
+                }
+                playSound('missile');
+                weapon.cooldownTimer = 2.0 * weaponCdMultiplier; // Bombard every 2 seconds
               }
               break;
             }
@@ -1507,7 +1507,18 @@ function HelicopterGame({
             }
 
             if (playerInvincibleTicksRef.current <= 0 && !isF22Stealth) {
-              const dmg = 8; // standard damage from red sniper bullet
+              let dmg = 8; // standard damage from red sniper bullet
+              if (p.shield > 0) {
+                if (p.shield >= dmg) {
+                  p.shield -= dmg;
+                  dmg = 0;
+                } else {
+                  dmg -= p.shield;
+                  p.shield = 0;
+                  playSound('explosion'); // shield break
+                  spawnExplosion(p.x, p.y, '#0ea5e9', 15);
+                }
+              }
               p.hp = Math.max(0, p.hp - dmg);
               playerInvincibleTicksRef.current = 20; // brief recovery
               setHudHp(p.hp);
@@ -1591,6 +1602,58 @@ function HelicopterGame({
                 hitSomething = true;
               }
 
+              // Hellfire huge explosion
+              if (b.type === 'player_hellfire') {
+                setShakeIntensity(prev => Math.min(15, prev + 10.0));
+                playSound('explosion');
+
+                const areaRad = 150;
+                enemies.forEach(otherE => {
+                  const aoeDist = Math.hypot(otherE.x - b.x, otherE.y - b.y);
+                  if (aoeDist < areaRad) {
+                    otherE.hp -= b.damage; 
+                    otherE.isHitFlash = 5;
+                  }
+                });
+
+                spawnExplosion(b.x, b.y, '#dc2626', 30); // massive red explosion
+
+                if (b.isHellfireLvl5) {
+                  // Leave molten ground
+                  trailsRef.current.push({
+                    id: `hf-molten-${Date.now()}-${Math.random()}`,
+                    x: b.x,
+                    y: b.y,
+                    radius: 120,
+                    damage: 25,
+                    duration: 3.0,
+                    maxDuration: 3.0
+                  });
+                }
+                
+                // Shockwave rings
+                for (let r = 1; r <= 4; r++) {
+                  const numDots = r * 15;
+                  const ringRadius = r * 25;
+                  for (let j = 0; j < numDots; j++) {
+                    const ang = (j / numDots) * Math.PI * 2;
+                    const cosVal = Math.cos(ang);
+                    const sinVal = Math.sin(ang);
+                    particlesRef.current.push({
+                      x: b.x + cosVal * ringRadius,
+                      y: b.y + sinVal * ringRadius,
+                      vx: cosVal * (2.0 + r * 2.0),
+                      vy: sinVal * (2.0 + r * 2.0),
+                      color: r <= 2 ? '#b91c1c' : '#dc2626',
+                      size: 4,
+                      life: 1.0,
+                      decay: 0.03
+                    });
+                  }
+                }
+                hitSomething = true;
+              }
+
               // Reduce Bullet Penetration count or destroy it
               b.penetration -= 1;
               if (b.penetration <= 0) {
@@ -1621,6 +1684,77 @@ function HelicopterGame({
 
         if (tr.duration <= 0) {
           trails.splice(tIdx, 1);
+        }
+      }
+
+      // 6.5 PROCESS ORBITING DRONES DAMAGE (fpv_drone, evo_drones, evo_laser_web)
+      {
+        const fpvWeapon = p.weapons.find(w => w.type === 'fpv_drone');
+        const evoDrones = p.weapons.find(w => w.type === 'evo_drones');
+        const evoLaserWeb = p.weapons.find(w => w.type === 'evo_laser_web');
+        
+        if (fpvWeapon || evoDrones || evoLaserWeb) {
+          let orbitRadius = 45;
+          let numDrones = 2;
+          let dmgPerTick = 0;
+          let laserDmgTick = 0;
+          
+          if (fpvWeapon) {
+            dmgPerTick = 15; // roughly DPS, but applied multiple times so scale it down
+          }
+          if (fpvWeapon && fpvWeapon.level >= 5) {
+            numDrones = 4;
+            orbitRadius = 55;
+            dmgPerTick = 30; // base + electric tether
+          }
+          if (evoDrones) {
+            numDrones = 2; // Keep 2 here. The evo shoots bullets! But drones also do contact damage? Or not.
+            orbitRadius = 45;
+            dmgPerTick = 40; 
+          }
+          if (evoLaserWeb) {
+            numDrones = 4;
+            orbitRadius = 80;
+            dmgPerTick = 50; 
+            laserDmgTick = 40; // laser does extra dmg
+          }
+          
+          // Scale DPS back to tick damage (assuming 60 FPS, check roughly 4 times a second = modulo 15)
+          if (frameCountRef.current % 15 === 0) {
+            const actualDmg = dmgPerTick; 
+            const actualLaserDmg = laserDmgTick;
+            
+            for (let i = 0; i < numDrones; i++) {
+              const a = droneAngleRef.current + (Math.PI * 2 / numDrones) * i;
+              const dx = p.x + Math.cos(a) * orbitRadius;
+              const dy = p.y + Math.sin(a) * orbitRadius;
+              
+              enemies.forEach(e => {
+                // Drone contact damage
+                if (Math.hypot(e.x - dx, e.y - dy) < 20 + e.width / 2) {
+                  e.hp -= actualDmg;
+                  e.isHitFlash = 2;
+                }
+                // Laser web damage (long outward beam)
+                if (evoLaserWeb && actualLaserDmg > 0) {
+                  // Line from drone outward
+                  const ex = dx + Math.cos(a) * 400;
+                  const ey = dy + Math.sin(a) * 400;
+                  // Basic point-line distance or segment bounding check roughly
+                  // Use dot product for fast distance to segment
+                  const l2 = 400 * 400; 
+                  let t = ((e.x - dx) * (ex - dx) + (e.y - dy) * (ey - dy)) / l2;
+                  t = Math.max(0, Math.min(1, t));
+                  const projX = dx + t * (ex - dx);
+                  const projY = dy + t * (ey - dy);
+                  if (Math.hypot(e.x - projX, e.y - projY) < e.width / 2 + 10) {
+                    e.hp -= actualLaserDmg;
+                    e.isHitFlash = 2;
+                  }
+                }
+              });
+            }
+          }
         }
       }
 
@@ -1696,6 +1830,15 @@ function HelicopterGame({
                 y: e.y,
                 xpValue: 0,
                 type: 'magnet'
+              });
+            } else if (Math.random() < 0.02) {
+              // 2% chance of dropping an Energy Shield
+              batteriesRef.current.push({
+                id: `shield-${Date.now()}-${Math.random()}`,
+                x: e.x,
+                y: e.y,
+                xpValue: 0,
+                type: 'shield'
               });
             } else {
               // Standard green energy batteries (XP cubes) with remaining 95%
@@ -1907,7 +2050,20 @@ function HelicopterGame({
             if (p.vehicleType === 'AH64') {
               baseDmg *= 0.8; // Ah64 Armored passive (20% passive reduction)
             }
-            const finalDmg = Math.max(1, Math.round(baseDmg));
+            let finalDmg = Math.max(1, Math.round(baseDmg));
+            
+            if (p.shield > 0) {
+              if (p.shield >= finalDmg) {
+                p.shield -= finalDmg;
+                finalDmg = 0;
+              } else {
+                finalDmg -= p.shield;
+                p.shield = 0;
+                playSound('explosion'); // shield break
+                spawnExplosion(p.x, p.y, '#0ea5e9', 20);
+              }
+            }
+
             p.hp = Math.max(0, p.hp - finalDmg);
             playerInvincibleTicksRef.current = 30; // 0.5s of invincibility
             playSound('hit');
@@ -2004,6 +2160,22 @@ function HelicopterGame({
                   vy: -1.0 - Math.random() * 1.5, // Float up!
                   color: '#ef4444',
                   size: 2.2,
+                  life: 1.0,
+                  decay: 0.03 + Math.random() * 0.02
+                });
+              }
+            } else if (bat.type === 'shield') {
+              playSound('power');
+              p.shield = Math.min(100, (p.shield || 0) + 50);
+              // Float up some blue particles
+              for (let i = 0; i < 15; i++) {
+                particlesRef.current.push({
+                  x: p.x + (Math.random() - 0.5) * 32,
+                  y: p.y + (Math.random() - 0.5) * 32,
+                  vx: (Math.random() - 0.5) * 1.5,
+                  vy: -1.0 - Math.random() * 1.5,
+                  color: '#0ea5e9',
+                  size: 2.5,
                   life: 1.0,
                   decay: 0.03 + Math.random() * 0.02
                 });
@@ -2233,16 +2405,38 @@ function HelicopterGame({
           ctx.fillRect(batX - 1, batY - 1, 2, 2);
           
           ctx.shadowBlur = 0;
+        } else if (bat.type === 'shield') {
+          // Blue hexagon shield item
+          const glowPulse = Math.sin(frameCountRef.current * 0.2) * 4;
+          ctx.shadowColor = '#0ea5e9';
+          ctx.shadowBlur = 6 + glowPulse;
+          ctx.fillStyle = 'rgba(14, 165, 233, 0.4)';
+          ctx.strokeStyle = '#38bdf8';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          for (let i = 0; i < 6; i++) {
+            const angle = (Math.PI / 3) * i;
+            const hx = batX + 8 * Math.cos(angle);
+            const hy = batY + 8 * Math.sin(angle);
+            if (i === 0) ctx.moveTo(hx, hy);
+            else ctx.lineTo(hx, hy);
+          }
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.fillStyle = '#fff';
+          ctx.fillRect(batX - 1.5, batY - 1.5, 3, 3);
+          ctx.shadowBlur = 0;
         } else {
-          // pulsing glow
+          // XP drops -> High-contrast cyan/blue
           const glowPulse = Math.sin(frameCountRef.current * 0.15) * 2;
-          ctx.fillStyle = '#22c55e';
-          ctx.shadowColor = '#22c55e';
-          ctx.shadowBlur = 4;
+          ctx.fillStyle = '#06b6d4'; // bright cyan
+          ctx.shadowColor = '#ffffff'; // white glow
+          ctx.shadowBlur = 5 + glowPulse;
           
-          // Draw double square to simulate micro sci-fi engine energy cells
           ctx.fillRect(batX - 4, batY - 4, 8, 8);
-          ctx.fillStyle = '#86efac';
+          ctx.fillStyle = '#cffafe'; // very light cyan center
           ctx.fillRect(batX - 2, batY - 2, 4, 4);
           
           ctx.shadowBlur = 0; // reset shadow right away
@@ -2423,49 +2617,95 @@ function HelicopterGame({
         ctx.restore();
       });
 
-      // RENDER ROTATING OPTION DRONES (if evolved weapon unlocked)
-      const hasEvoDrones = p.weapons.some(w => w.type === 'evo_drones');
-      if (hasEvoDrones) {
-        const orbitRadius = 45;
+      // RENDER ROTATING OPTION DRONES (if unlocked)
+      {
+        const fpvWeapon = p.weapons.find(w => w.type === 'fpv_drone');
+        const evoDrones = p.weapons.find(w => w.type === 'evo_drones');
+        const evoLaserWeb = p.weapons.find(w => w.type === 'evo_laser_web');
         
-        // Drone Position 1
-        const orb1_x = p.x + Math.cos(droneAngleRef.current) * orbitRadius - cameraX;
-        const orb1_y = p.y + Math.sin(droneAngleRef.current) * orbitRadius - cameraY;
-        // Drone Position 2
-        const orb2_x = p.x + Math.cos(droneAngleRef.current + Math.PI) * orbitRadius - cameraX;
-        const orb2_y = p.y + Math.sin(droneAngleRef.current + Math.PI) * orbitRadius - cameraY;
-
-        const dronePositions = [
-          { x: orb1_x, y: orb1_y, a: droneAngleRef.current },
-          { x: orb2_x, y: orb2_y, a: droneAngleRef.current + Math.PI }
-        ];
-
-        dronePositions.forEach(dp => {
-          ctx.save();
-          ctx.translate(dp.x, dp.y);
-          ctx.rotate(dp.a * 2); // fast drone self rotation
-
-          // Simple cute metallic cube
-          ctx.fillStyle = '#475569';
-          ctx.fillRect(-6, -6, 12, 12);
-          // Green sensor eye
-          ctx.fillStyle = '#22c55e';
-          ctx.fillRect(-2, -5, 4, 3);
+        if (fpvWeapon || evoDrones || evoLaserWeb) {
+          let orbitRadius = 45;
+          let numDrones = 2;
+          let drawElectricWeb = false;
           
-          // Little tiny thruster flame particle representation
-          ctx.fillStyle = '#f59e0b';
-          ctx.fillRect(-1, 5, 2, 2);
+          if (fpvWeapon && fpvWeapon.level >= 5) {
+            numDrones = 4;
+            drawElectricWeb = true;
+            orbitRadius = 55;
+          }
+          if (evoDrones) {
+            numDrones = 2;
+            orbitRadius = 45;
+          }
+          if (evoLaserWeb) {
+            numDrones = 4;
+            drawElectricWeb = true;
+            orbitRadius = 80;
+          }
 
-          ctx.restore();
+          const dronePositions: {x: number, y: number, a: number}[] = [];
+          for (let i = 0; i < numDrones; i++) {
+            const a = droneAngleRef.current + (Math.PI * 2 / numDrones) * i;
+            dronePositions.push({
+              x: p.x + Math.cos(a) * orbitRadius - cameraX,
+              y: p.y + Math.sin(a) * orbitRadius - cameraY,
+              a: a
+            });
+          }
 
-          // Connective electricity tether
-          ctx.strokeStyle = 'rgba(74, 222, 128, 0.15)';
-          ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.moveTo(p.x - cameraX, p.y - cameraY);
-          ctx.lineTo(dp.x, dp.y);
-          ctx.stroke();
-        });
+          // Draw electrical connections between drones
+          if (drawElectricWeb) {
+            ctx.beginPath();
+            for (let i = 0; i < dronePositions.length; i++) {
+              const dp = dronePositions[i];
+              if (i === 0) ctx.moveTo(dp.x, dp.y);
+              else ctx.lineTo(dp.x, dp.y);
+            }
+            ctx.closePath();
+            ctx.strokeStyle = `rgba(56, 189, 248, ${0.4 + Math.random() * 0.4})`;
+            ctx.lineWidth = Math.random() > 0.5 ? 2 : 1;
+            ctx.stroke();
+          }
+
+          dronePositions.forEach(dp => {
+            ctx.save();
+            ctx.translate(dp.x, dp.y);
+            ctx.rotate(dp.a * 2); // fast drone self rotation
+
+            // Simple cute metallic cube
+            ctx.fillStyle = '#475569';
+            ctx.fillRect(-6, -6, 12, 12);
+            // Green sensor eye (Cyan for evo web)
+            ctx.fillStyle = evoLaserWeb ? '#22d3ee' : '#22c55e';
+            ctx.fillRect(-2, -5, 4, 3);
+            
+            // Little tiny thruster flame particle representation
+            ctx.fillStyle = '#f59e0b';
+            ctx.fillRect(-1, 5, 2, 2);
+
+            // Render outward lasers for evo_laser_web
+            if (evoLaserWeb) {
+              ctx.rotate(-dp.a * 2); // unrotate to align with outward vector
+              ctx.rotate(dp.a); // point outward
+              ctx.fillStyle = 'rgba(6, 182, 212, 0.4)';
+              ctx.fillRect(8, -1.5, 400, 3); // Long piercing beam
+              ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+              ctx.fillRect(8, -0.5, 400, 1);
+            }
+
+            ctx.restore();
+
+            if (!drawElectricWeb) {
+              // Standard connective electricity tether to player
+              ctx.strokeStyle = 'rgba(74, 222, 128, 0.15)';
+              ctx.lineWidth = 1;
+              ctx.beginPath();
+              ctx.moveTo(p.x - cameraX, p.y - cameraY);
+              ctx.lineTo(dp.x, dp.y);
+              ctx.stroke();
+            }
+          });
+        }
       }
 
       // RENDER PROJECTILES / AMMUNITON BULLETS
@@ -2515,14 +2755,65 @@ function HelicopterGame({
           ctx.arc(0, 0, b.radius, 0, Math.PI * 2);
           
           const grad = ctx.createRadialGradient(0, 0, 1, 0, 0, b.radius);
-          grad.addColorStop(0, '#fef08a'); // central solar flare yellow
-          grad.addColorStop(0.3, '#f97316'); // intense fire orange
-          grad.addColorStop(0.8, 'rgba(239,68,68,0.2)');
-          grad.addColorStop(1, 'rgba(239,68,68,0)');
+          if (b.isHellfireLvl5) {
+            grad.addColorStop(0, '#bae6fd'); // bright blue core
+            grad.addColorStop(0.3, '#0ea5e9'); // intense cyan
+            grad.addColorStop(0.8, 'rgba(2,132,199,0.2)');
+            grad.addColorStop(1, 'rgba(2,132,199,0)');
+          } else {
+            grad.addColorStop(0, '#fef08a'); // central solar flare yellow
+            grad.addColorStop(0.3, '#f97316'); // intense fire orange
+            grad.addColorStop(0.8, 'rgba(239,68,68,0.2)');
+            grad.addColorStop(1, 'rgba(239,68,68,0)');
+          }
           
           ctx.fillStyle = grad;
           ctx.fill();
         } 
+        else if (b.type === 'player_laser') {
+          const ang = Math.atan2(b.vy, b.vx);
+          ctx.rotate(ang);
+          ctx.fillStyle = '#fca5a5';
+          ctx.fillRect(-15, -1.5, 30, 3);
+          ctx.fillStyle = '#fff';
+          ctx.fillRect(-12, -0.5, 24, 1);
+        }
+        else if (b.type === 'player_hellfire') {
+          const ang = b.angle !== undefined ? b.angle : Math.atan2(b.vy, b.vx);
+          ctx.rotate(ang);
+          
+          // Massive missile body
+          ctx.fillStyle = '#475569';
+          ctx.fillRect(-14, -6, 20, 12);
+          
+          // Warhead cone 
+          ctx.fillStyle = '#1e293b';
+          ctx.beginPath();
+          ctx.moveTo(6, -6);
+          ctx.lineTo(16, 0);
+          ctx.lineTo(6, 6);
+          ctx.closePath();
+          ctx.fill();
+          
+          ctx.fillStyle = '#dc2626'; // red hazard tip
+          ctx.beginPath();
+          ctx.moveTo(12, -2.4);
+          ctx.lineTo(16, 0);
+          ctx.lineTo(12, 2.4);
+          ctx.closePath();
+          ctx.fill();
+
+          // Rear thruster exhaust
+          ctx.fillStyle = '#f97316';
+          ctx.fillRect(-18, -4, 4, 8);
+          ctx.fillStyle = '#fef08a';
+          ctx.fillRect(-22, -2, 4, 4);
+
+          // Danger Warning lines on body
+          ctx.fillStyle = '#eab308';
+          ctx.fillRect(-4, -6, 2, 12);
+          ctx.fillRect(0, -6, 2, 12);
+        }
         else if (b.type === 'player_evo_pierce') {
           // Evolved Incendiary Armor-Piercing core plasma bullet
           const ang = Math.atan2(b.vy, b.vx);
@@ -2766,6 +3057,17 @@ function HelicopterGame({
         ctx.fillRect(-34, -5, 18, 6);
       }
 
+      // Draw Shield
+      if (p.shield > 0) {
+        ctx.beginPath();
+        ctx.arc(0, 0, p.radius + 15, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(14, 165, 233, 0.2)';
+        ctx.fill();
+        ctx.strokeStyle = `rgba(56, 189, 248, ${0.5 + Math.sin(Date.now() / 200) * 0.3})`;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+
       ctx.restore(); // retrieve shake translation frames safely
 
       ctx.restore(); // restore global saves
@@ -2900,15 +3202,20 @@ function HelicopterGame({
                       <div className="absolute top-0 bottom-0 left-0 w-1 bg-gradient-to-b from-teal-500 to-indigo-500" />
                       <div className="flex items-center gap-2 pl-1.5">
                         <span className="text-lg">
-                          {w.type === 'machine_gun' ? '🔫' : w.type === 'homing_missile' ? '🎯' : w.type === 'flare' ? '☀️' : w.type === 'evo_pierce' ? '🔥' : '🚀'}
+                          {(() => {
+                            const icons: Record<string, string> = { machine_gun: '🔫', homing_missile: '🎯', flare: '☀️', fpv_drone: '🛸', hellfire: '🌋', evo_pierce: '🔥', evo_drones: '🚀', evo_doomsday: '☢️', evo_laser_web: '⚡' };
+                            return icons[w.type] || '❓';
+                          })()}
                         </span>
                         <div>
                           <div className="text-xs font-bold text-white leading-none">
-                            {w.type === 'machine_gun' && '自動化重機槍'}
-                            {w.type === 'homing_missile' && '雷達追蹤飛彈'}
-                            {w.type === 'flare' && '側翼高熱熱焰彈'}
-                            {w.type === 'evo_pierce' && '🔥 燃燒穿甲彈 [超武]'}
-                            {w.type === 'evo_drones' && '🚀 浮游砲陣列 [超武]'}
+                            {(() => {
+                              const names: Record<string, string> = {
+                                machine_gun: '自動化重機槍', homing_missile: '雷達追蹤飛彈', flare: '側翼高熱熱焰彈', fpv_drone: '環繞護衛機', hellfire: '地獄火飛彈',
+                                evo_pierce: '🔥 燃燒穿甲彈 [超武]', evo_drones: '🚀 浮游砲陣列 [超武]', evo_doomsday: '☢️ 末日審判 [超武]', evo_laser_web: '⚡ 磁爆切割網 [超武]'
+                              };
+                              return names[w.type] || w.type;
+                            })()}
                           </div>
                           <span className="text-[10px] font-mono text-slate-400 uppercase">
                             {w.level === 6 ? 'LEVEL MAX (EVO)' : `LV.${w.level} / 5`}

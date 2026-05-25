@@ -3,7 +3,7 @@
 export type GameState = 'START_MENU' | 'VEHICLE_SELECTION' | 'PLAYING' | 'UPGRADE' | 'GAMEOVER' | 'VICTORY' | 'SLOT_MACHINE';
 
 export interface WeaponState {
-  type: 'machine_gun' | 'homing_missile' | 'flare' | 'evo_pierce' | 'evo_drones';
+  type: 'machine_gun' | 'homing_missile' | 'flare' | 'fpv_drone' | 'hellfire' | 'evo_pierce' | 'evo_drones' | 'evo_doomsday' | 'evo_laser_web';
   level: number; // 1-5; 6 is Evolved
   cooldownTimer: number; // in seconds
 }
@@ -18,6 +18,7 @@ export interface Player {
   radius: number;
   hp: number;
   maxHp: number;
+  shield: number;
   level: number;
   xp: number;
   maxXp: number;
@@ -54,11 +55,12 @@ export interface Bullet {
   vy: number;
   radius: number;
   damage: number;
-  type: 'player_basic' | 'player_missile' | 'player_flare' | 'player_evo_pierce' | 'enemy_bullet';
+  type: 'player_basic' | 'player_laser' | 'player_missile' | 'player_hellfire' | 'player_flare' | 'player_evo_pierce' | 'enemy_bullet';
   penetration: number; // how many enemies it can pass through
   duration?: number; // remaining life time in seconds (for flares, etc)
   angle?: number; // rotational angle or direction
   trailTimer?: number; // to spawn trail fire
+  isHellfireLvl5?: boolean;
 }
 
 export interface FireTrail {
@@ -83,7 +85,7 @@ export interface BatteryItem {
   y: number;
   xpValue: number;
   vying?: boolean; // magnet state active
-  type?: 'xp' | 'magnet' | 'heal' | 'chest'; // drop type
+  type?: 'xp' | 'magnet' | 'heal' | 'chest' | 'shield'; // drop type
   speed?: number; // magnet speed factor
 }
 
@@ -100,7 +102,7 @@ export interface Particle {
 
 export interface UpgradeOption {
   id: string;
-  type: 'machine_gun' | 'homing_missile' | 'flare' | 'evo_pierce' | 'evo_drones' | 'heal' | 'max_hp';
+  type: 'machine_gun' | 'homing_missile' | 'flare' | 'fpv_drone' | 'hellfire' | 'evo_pierce' | 'evo_drones' | 'evo_doomsday' | 'evo_laser_web' | 'heal' | 'max_hp';
   title: string;
   description: string;
   icon: string;
