@@ -546,9 +546,12 @@ function HelicopterGame({
   };
   
   const initiateGame = () => {
-    console.log("Button clicked! (Commence Deployment)");
     playSound('power');
+
+    // 1. 確保正確讀取全域常數 VEHICLE_PRESETS
     const preset = VEHICLE_PRESETS[selectedVehicle];
+
+    // 2. 完整初始化玩家核心數據，絕不可遺漏 timeElapsed 等屬性
     playerRef.current = {
       vehicleType: selectedVehicle,
       x: 1250,
@@ -567,15 +570,22 @@ function HelicopterGame({
         { type: preset.initialWeapon, level: 1, cooldownTimer: 0 }
       ],
       kills: 0,
+      timeElapsed: 0, // 修復 NaN:NaN 的絕對關鍵
     };
     
+    // 3. 強制同步所有 React UI 狀態面板
     setHudHp(preset.maxHp);
     setHudMaxHp(preset.maxHp);
+    setHudLevel(1);
+    setHudXp(0);
+    setHudKills(0);
+    setGameTime(0);
     setWeapons([...playerRef.current.weapons]);
     
-    changeGameState('PLAYING');
+    // 4. 重啟遊戲馬達與時間軸
     lastTimeRef.current = Date.now();
     isPlayingRef.current = true;
+    changeGameState('PLAYING');
   };
 
   // Explosion Particle Spawning Utility
