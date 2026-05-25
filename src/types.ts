@@ -1,6 +1,6 @@
 // Game Types and Interfaces
 
-export type GameState = 'START' | 'PLAYING' | 'UPGRADE' | 'GAMEOVER' | 'VICTORY';
+export type GameState = 'START' | 'PLAYING' | 'UPGRADE' | 'GAMEOVER' | 'VICTORY' | 'SLOT_MACHINE';
 
 export interface WeaponState {
   type: 'machine_gun' | 'homing_missile' | 'flare' | 'evo_pierce' | 'evo_drones';
@@ -40,7 +40,7 @@ export interface Enemy {
   speed: number;
   hp: number;
   maxHp: number;
-  type: 'drone' | 'fast_drone' | 'shield_drone' | 'boss' | 'sniper_drone';
+  type: 'drone' | 'fast_drone' | 'shield_drone' | 'boss' | 'sniper_drone' | 'mini_boss';
   scoreValue: number;
   isHitFlash: number; // timer in ticks for flash effect
   shootCooldown?: number;
@@ -83,7 +83,7 @@ export interface BatteryItem {
   y: number;
   xpValue: number;
   vying?: boolean; // magnet state active
-  type?: 'xp' | 'magnet'; // drop type
+  type?: 'xp' | 'magnet' | 'heal' | 'chest'; // drop type
   speed?: number; // magnet speed factor
 }
 

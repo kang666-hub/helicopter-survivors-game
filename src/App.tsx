@@ -175,6 +175,12 @@ function HelicopterGame({
   const [bossMaxHp, setBossMaxHp] = useState<number>(1000);
   const [activeEvolutions, setActiveEvolutions] = useState<string[]>([]);
   
+  // Slot Machine states
+  const [slotRolling, setSlotRolling] = useState<boolean>(false);
+  const [slotCurrentIcon, setSlotCurrentIcon] = useState<string>('🎁');
+  const [slotCurrentName, setSlotCurrentName] = useState<string>('寶箱密碼鎖解密中...');
+  const [slotResultWeapon, setSlotResultWeapon] = useState<WeaponState | null>(null);
+  
   // Achievement States
   const [toasts, setToasts] = useState<(Achievement & { keyId: string })[]>([]);
   const unlockedRef = useRef<{ [key: string]: boolean }>({
@@ -262,6 +268,7 @@ function HelicopterGame({
   const droneAngleRef = useRef<number>(0);
   const magnetFlashRef = useRef<number>(0);
   const animationFrameIdRef = useRef<number | null>(null);
+  const spawnedMiniBossesRef = useRef<number[]>([]);
 
   // Sound generator helpers using Web Audio API
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -787,6 +794,81 @@ function HelicopterGame({
     isPlayingRef.current = true;
   };
 
+  const triggerSlotMachine = () => {
+    // 1. Pause game
+    isPlayingRef.current = false;
+    changeGameState('SLOT_MACHINE');
+    
+    // 2. Identify rolling candidates from current weapons that are level < 5.
+    const p = playerRef.current;
+    const candidates = p.weapons.filter(w => w.level < 5);
+    
+    setSlotRolling(true);
+    setSlotResultWeapon(null);
+    
+    // Weapon descriptions list for UI
+    const weaponIconsMap: Record<string, string> = {
+      machine_gun: '🔫',
+      homing_missile: '🎯',
+      flare: '☀️',
+    };
+    const weaponNamesMap: Record<string, string> = {
+      machine_gun: '自動化重機槍 / MACHINE GUN',
+      homing_missile: '雷達追蹤飛彈 / HOMING MISSILE',
+      flare: '側翼高熱熱焰彈 / HEAT FLARE',
+    };
+
+    const rollList = candidates.length > 0 ? candidates : p.weapons;
+
+    if (rollList.length === 0) {
+      // Emergency: no upgradable weapons
+      setSlotCurrentIcon('🔧');
+      setSlotCurrentName('戰地緊急維修 / EMERGENCY REPAIR');
+      setSlotRolling(false);
+      p.hp = Math.min(p.maxHp, p.hp + 50);
+      setHudHp(p.hp);
+      return;
+    }
+
+    // 3. Start a rolling animation container interval that fires for 2 seconds
+    let rollTicks = 0;
+    const maxTicks = 15; // 15 updates
+    const intervalId = setInterval(() => {
+      rollTicks++;
+      const randWIndex = Math.floor(Math.random() * rollList.length);
+      const tempW = rollList[randWIndex];
+      setSlotCurrentIcon(weaponIconsMap[tempW.type] || '🚀');
+      setSlotCurrentName(weaponNamesMap[tempW.type] || tempW.type.toUpperCase());
+      
+      // Slot machine tick audio sound
+      playSound('shoot');
+
+      if (rollTicks >= maxTicks) {
+        clearInterval(intervalId);
+        
+        // Finalized Selection!
+        const finalW = rollList[Math.floor(Math.random() * rollList.length)];
+        setSlotCurrentIcon(weaponIconsMap[finalW.type] || '🚀');
+        setSlotCurrentName(weaponNamesMap[finalW.type] || finalW.type.toUpperCase());
+        setSlotRolling(false);
+        setSlotResultWeapon(finalW);
+        
+        // Upgrade level in player structure immediately
+        finalW.level += 1;
+        
+        // Sync states
+        setWeapons([...p.weapons]);
+        playSound('power');
+      }
+    }, 120);
+  };
+
+  const resumeFromSlotMachine = () => {
+    changeGameState('PLAYING');
+    lastTimeRef.current = Date.now();
+    isPlayingRef.current = true;
+  };
+
   // Main Canvas Rendering & Physics Update ticks (continuous)
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -919,15 +1001,18 @@ function HelicopterGame({
       const enemySpeedScale = 0.6 + timeFactor * 0.15; // Starting with a 40% reduction (0.6) at the initial stage, increasing linearly
       const hpScale = 1.0 + timeFactor * 0.20;    // Linear HP scaling of 20% every 30s
       
-      // Spawner frequency (interval in frames): initial batchPeriod = 90 frames (1.5 seconds)
-      // Generates enemies faster over time as frame interval decreases
-      const batchPeriod = Math.max(20, 90 - timeFactor * 15);
+      // Spawner frequency (interval in frames): Linear decrement from 130 frames down to 22 frames
+      // Ensuring opening seconds have very sparse spawning behavior
+      const batchPeriod = Math.max(22, Math.floor(130 - elapsedSeconds * 1.5));
       const maxEnemiesOnField = 250 + Math.floor(elapsedSeconds / 10) * 20;
 
       // Spawn normal and fast drones
       if (frameCountRef.current % batchPeriod === 0 && enemiesRef.current.length < maxEnemiesOnField) {
-        // Spawn count slightly goes up over time
-        const spawnCount = 2 + Math.floor(elapsedSeconds / 35);
+        // Spawn count starts very low (1-2) before 30 sec, then linearly increases
+        const spawnCount = elapsedSeconds < 30 
+          ? (elapsedSeconds < 15 ? 1 : 2) 
+          : Math.min(8, 2 + Math.floor((elapsedSeconds - 30) / 12));
+
         for (let s = 0; s < spawnCount; s++) {
           const spawnAngle = Math.random() * Math.PI * 2;
           const spawnDist = 420 + Math.random() * 120;
@@ -937,7 +1022,7 @@ function HelicopterGame({
           // Don't spawn outside world size limits
           if (ex > 10 && ex < worldSize - 10 && ey > 10 && ey < worldSize - 10) {
             const roll = Math.random();
-            let etype: 'drone' | 'fast_drone' | 'shield_drone' | 'sniper_drone' = 'drone';
+            let etype: 'drone' | 'fast_drone' | 'shield_drone' | 'sniper_drone' | 'mini_boss' = 'drone';
             let ehp = 10;
             let espeed = 1.0; // Base speed: 20 * 0.05 = 1.0
             let ewidth = 14;
@@ -1006,6 +1091,33 @@ function HelicopterGame({
             });
           }
         }
+      }
+
+      // Check Mini-Boss Spawn (at 5x heavy drone specs) at 60 and 120 seconds respectively
+      const currentSpawningSec = Math.floor(elapsedSeconds);
+      if ((currentSpawningSec === 60 || currentSpawningSec === 120) && !spawnedMiniBossesRef.current.includes(currentSpawningSec)) {
+        spawnedMiniBossesRef.current.push(currentSpawningSec);
+        playSound('boss_spawn');
+        
+        // 5 times shield drone specifications: hp is 250, width/height is 52x52
+        const miniBossBaseHp = 250;
+        const finalMiniBossHp = Math.max(250, Math.round(miniBossBaseHp * hpScale));
+        
+        enemiesRef.current.push({
+          id: `mini-boss-${currentSpawningSec}-${Date.now()}`,
+          x: p.x + (Math.random() - 0.5) * 160,
+          y: p.y - 280,
+          vx: 0,
+          vy: 0,
+          width: 52,
+          height: 52,
+          speed: 0.8,
+          hp: finalMiniBossHp,
+          maxHp: finalMiniBossHp,
+          type: 'mini_boss',
+          scoreValue: 300,
+          isHitFlash: 0
+        });
       }
 
       // Check Boss Spawn at exactly 2 minutes (120 seconds) - spawning once
@@ -1484,23 +1596,48 @@ function HelicopterGame({
 
           setShakeIntensity(prev => Math.min(12, prev + (e.type === 'boss' ? 12 : 1.8)));
 
-          // Check Boss Death to trigger Victory or ultimate drops
-          if (e.type === 'boss') {
-            setBossActive(false);
-            // Drop a giant battery worth immense multiplier XP
+          // Check Boss or Mini-Boss Death to trigger ultimate drops or Chest drops
+          if (e.type === 'boss' || e.type === 'mini_boss') {
+            if (e.type === 'boss') {
+              setBossActive(false);
+              // Drop a giant battery worth immense multiplier XP
+              batteriesRef.current.push({
+                id: `bat-large-${Date.now()}`,
+                x: e.x,
+                y: e.y,
+                xpValue: 40
+              });
+              // Explode field around
+              for (let k = 0; k < 5; k++) {
+                spawnExplosion(e.x + (Math.random() - 0.5) * 80, e.y + (Math.random() - 0.5) * 80, '#f59e0b', 12);
+              }
+            } else {
+              // Mini Boss death explosions
+              for (let k = 0; k < 3; k++) {
+                spawnExplosion(e.x + (Math.random() - 0.5) * 40, e.y + (Math.random() - 0.5) * 40, '#f97316', 10);
+              }
+            }
+
+            // BOTH Boss and Mini-Boss drop a glowing chest box entity!
             batteriesRef.current.push({
-              id: `bat-large-${Date.now()}`,
+              id: `chest-${Date.now()}-${Math.random()}`,
               x: e.x,
               y: e.y,
-              xpValue: 40
+              xpValue: 0,
+              type: 'chest'
             });
-            // Explode field around
-            for (let k = 0; k < 5; k++) {
-              spawnExplosion(e.x + (Math.random() - 0.5) * 80, e.y + (Math.random() - 0.5) * 80, '#f59e0b', 12);
-            }
           } else {
-            // 5% chance of dropping a Magnet instead of regular batteries
-            if (Math.random() < 0.05) {
+            // Check for HP Drop: 3% probability of dropping healing "維修扳手" / "醫療包"
+            if (Math.random() < 0.03) {
+              batteriesRef.current.push({
+                id: `heal-${Date.now()}-${Math.random()}`,
+                x: e.x,
+                y: e.y,
+                xpValue: 0,
+                type: 'heal'
+              });
+            } else if (Math.random() < 0.05) {
+              // 5% chance of dropping a Magnet instead of regular batteries
               batteriesRef.current.push({
                 id: `magnet-${Date.now()}-${Math.random()}`,
                 x: e.x,
@@ -1801,6 +1938,27 @@ function HelicopterGame({
                   }
                 }
               });
+            } else if (bat.type === 'heal') {
+              // Restore 20 HP, capped at Max HP
+              playSound('power');
+              p.hp = Math.min(p.maxHp, p.hp + 20);
+              setHudHp(p.hp);
+              // Float up some red cross particles
+              for (let i = 0; i < 15; i++) {
+                particlesRef.current.push({
+                  x: p.x + (Math.random() - 0.5) * 32,
+                  y: p.y + (Math.random() - 0.5) * 32,
+                  vx: (Math.random() - 0.5) * 1.5,
+                  vy: -1.0 - Math.random() * 1.5, // Float up!
+                  color: '#ef4444',
+                  size: 2.2,
+                  life: 1.0,
+                  decay: 0.03 + Math.random() * 0.02
+                });
+              }
+            } else if (bat.type === 'chest') {
+              playSound('power');
+              triggerSlotMachine();
             } else {
               p.xp += bat.xpValue;
               
@@ -1980,6 +2138,49 @@ function HelicopterGame({
           ctx.fill();
 
           ctx.shadowBlur = 0;
+        } else if (bat.type === 'heal') {
+          // Glowing red cross / medical pack
+          const glowPulse = Math.sin(frameCountRef.current * 0.15) * 2;
+          ctx.shadowColor = '#ef4444';
+          ctx.shadowBlur = 4 + glowPulse;
+          
+          // Outer border
+          ctx.fillStyle = '#7f1d1d';
+          ctx.fillRect(batX - 7, batY - 7, 14, 14);
+          
+          // Drawing a Red Cross
+          ctx.fillStyle = '#ef4444';
+          // Horizontal rect
+          ctx.fillRect(batX - 5, batY - 1.5, 10, 3);
+          // Vertical rect
+          ctx.fillRect(batX - 1.5, batY - 5, 3, 10);
+          
+          // Highlight inner cross (white/pink)
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(batX - 3.5, batY - 0.5, 7, 1);
+          ctx.fillRect(batX - 0.5, batY - 3.5, 1, 7);
+          
+          ctx.shadowBlur = 0;
+        } else if (bat.type === 'chest') {
+          // Chest item (glowing golden box)
+          const glowPulse = Math.sin(frameCountRef.current * 0.25) * 4;
+          ctx.shadowColor = '#fbbf24';
+          ctx.shadowBlur = 6 + glowPulse;
+          
+          // Draw chest box body
+          ctx.fillStyle = '#78350f'; // brown border
+          ctx.fillRect(batX - 8, batY - 6, 16, 12);
+          
+          ctx.fillStyle = '#d97706'; // gold color
+          ctx.fillRect(batX - 6, batY - 4, 12, 8);
+          
+          // Steel/iron lock/band in center
+          ctx.fillStyle = '#1e293b'; 
+          ctx.fillRect(batX - 2, batY - 4, 4, 8);
+          ctx.fillStyle = '#fbbf24'; // tiny gold padlock
+          ctx.fillRect(batX - 1, batY - 1, 2, 2);
+          
+          ctx.shadowBlur = 0;
         } else {
           // pulsing glow
           const glowPulse = Math.sin(frameCountRef.current * 0.15) * 2;
@@ -2098,6 +2299,42 @@ function HelicopterGame({
           ctx.fillStyle = '#fae8ff';
           ctx.fillRect(-1.5, -hh + 1, 3, 3);
         } 
+        else if (e.type === 'mini_boss') {
+          // Type Mini-Boss: Massive dark grey and glowing orange assault carrier (52x52)
+          const pulse = Math.sin(frameCountRef.current * 0.15) * 4;
+          
+          // Outer bulky wings/shields
+          ctx.fillStyle = '#374151'; // dark grey steel
+          ctx.beginPath();
+          ctx.arc(0, 0, hw, 0, Math.PI * 2);
+          ctx.fill();
+          
+          // Outer golden reactor ring
+          ctx.strokeStyle = '#d97706';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.arc(0, 0, hw - 3, 0, Math.PI * 2);
+          ctx.stroke();
+          
+          // Glowing hazard stripes / power plates
+          ctx.fillStyle = '#f97316'; // orange glowing energy channels
+          ctx.shadowColor = '#f97316';
+          ctx.shadowBlur = 4 + pulse;
+          ctx.beginPath();
+          ctx.arc(0, 0, hw - 10, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.shadowBlur = 0;
+          
+          // Center core armor
+          ctx.fillStyle = '#111827'; // deep dark metal
+          ctx.fillRect(-hw + 14, -hh + 14, e.width - 28, e.height - 28);
+          
+          // Triple core lasers
+          ctx.fillStyle = '#fdba74'; // glowing light peach
+          ctx.beginPath();
+          ctx.arc(0, 0, 6, 0, Math.PI * 2);
+          ctx.fill();
+        }
         else if (e.type === 'boss') {
           // RENDER BOSS: GIANT BOMBER V-shape Flying Wing (90x52)
           // Sleek dark tech paint
@@ -3032,6 +3269,86 @@ function HelicopterGame({
                           </div>
                         </motion.button>
                       ))}
+                    </div>
+                  </motion.div>
+                </div>
+              )}
+
+              {/* SLOT MACHINE TREASURE CHEST OVERLAY */}
+              {gameState === 'SLOT_MACHINE' && (
+                <div id="slot_machine_overlay" className="absolute inset-0 bg-slate-950/92 flex flex-col items-center justify-center p-4 text-center z-25 backdrop-blur-md">
+                  <motion.div 
+                    className="max-w-md w-full bg-slate-900 border-4 border-amber-500/80 p-6 rounded-2xl shadow-2xl shadow-amber-500/10 space-y-5 text-center relative overflow-hidden"
+                    initial={{ scale: 0.85, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ type: 'spring', damping: 20 }}
+                  >
+                    {/* Glowing yellow beams behind */}
+                    <div className="absolute top-0 left-1/2 -translate-x-1/2 w-64 h-64 bg-amber-500/10 rounded-full blur-3xl" />
+                    
+                    <div>
+                      <span className="text-[10px] text-amber-400 font-mono tracking-widest bg-amber-950/70 border border-amber-900/60 px-3 py-1 rounded-full uppercase font-bold inline-block">
+                        🎁 CORE LOGISTICS DROP DETECTED
+                      </span>
+                      <h2 className="game-title text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-amber-400 to-amber-200 mt-2">
+                        戰地核心「補給保險箱」
+                      </h2>
+                      <p className="text-slate-400 text-xs font-mono mt-1">
+                        偵測到敵方高階信號。點擊密碼解鎖，將為您隨機升級一項現有武器！
+                      </p>
+                    </div>
+
+                    {/* Slot Machine Roll Tumbler Visual Container */}
+                    <div className="bg-slate-950 border-2 border-slate-800 p-6 rounded-xl flex flex-col items-center justify-center relative overflow-hidden min-h-[140px] shadow-inner">
+                      {/* Industrial brackets */}
+                      <div className="absolute top-1 left-1 font-mono text-[9px] text-slate-600">DECRYPT-SYS v8.2</div>
+                      <div className="absolute bottom-1 right-1 font-mono text-[9px] text-slate-600">STATE: {slotRolling ? 'DECRYPTING' : 'READY'}</div>
+                      
+                      {/* Sliding Tumbler Window */}
+                      <motion.div 
+                        key={slotCurrentIcon} 
+                        initial={{ y: -25, opacity: 0 }}
+                        animate={{ y: 0, opacity: 1 }}
+                        transition={{ duration: 0.1 }}
+                        className="flex flex-col items-center justify-center space-y-2 mt-2"
+                      >
+                        <span className={`text-6xl filter drop-shadow-[0_0_12px_rgba(245,158,11,0.5)] ${slotRolling ? 'animate-bounce' : ''}`}>
+                          {slotCurrentIcon}
+                        </span>
+                        
+                        <div className="text-white text-xs font-semibold tracking-wider font-mono bg-slate-900 border border-slate-800 px-3 py-1 rounded-md">
+                          {slotCurrentName}
+                        </div>
+                      </motion.div>
+                    </div>
+
+                    {/* Feedback & Actions */}
+                    <div className="space-y-2">
+                      {slotRolling ? (
+                        <div className="text-amber-400 font-mono text-xs font-bold animate-pulse">
+                          密碼解碼中，伺服器核心旋轉中... PLEASE STAND BY
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          <div className="p-3 bg-teal-950/20 border border-teal-500/30 rounded-lg text-left">
+                            <p className="text-[11px] text-teal-400 font-bold leading-normal font-mono mb-1">
+                              ✓ 武器升級解鎖成功！
+                            </p>
+                            <p className="text-[10px] text-slate-300 leading-relaxed font-mono">
+                              您的 {slotResultWeapon ? (slotResultWeapon.type === 'machine_gun' ? '自動化重機槍' : slotResultWeapon.type === 'homing_missile' ? '雷達追蹤飛彈' : '側翼高熱熱焰彈') : '戰地維修'} 等級已提升 1 級。
+                            </p>
+                          </div>
+                          
+                          <motion.button
+                            onClick={resumeFromSlotMachine}
+                            whileHover={{ scale: 1.03 }}
+                            whileTap={{ scale: 0.97 }}
+                            className="w-full bg-gradient-to-r from-yellow-400 to-amber-500 text-slate-950 text-xs font-black py-2.5 rounded-xl uppercase tracking-widest shadow-lg shadow-amber-500/20 hover:from-yellow-300 hover:to-amber-400"
+                          >
+                            重返天空 / EXECUTE COMBAT
+                          </motion.button>
+                        </div>
+                      )}
                     </div>
                   </motion.div>
                 </div>
