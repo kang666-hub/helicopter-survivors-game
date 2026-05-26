@@ -2744,9 +2744,16 @@ function HelicopterGame({
           ctx.fillRect(-12, 3.5, 3, 2);
         } 
         else if (b.type === 'player_flare') {
-          // Anti Air Defence Flares: expanding halo rings
+          // Anti Air Defence Flares: expanding halo rings -> Tech Hexagon Burst
           ctx.beginPath();
-          ctx.arc(0, 0, b.radius, 0, Math.PI * 2);
+          for (let i = 0; i < 6; i++) {
+            const angle = (Math.PI / 3) * i;
+            const px = Math.cos(angle) * b.radius;
+            const py = Math.sin(angle) * b.radius;
+            if (i === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+          }
+          ctx.closePath();
           
           const grad = ctx.createRadialGradient(0, 0, 1, 0, 0, b.radius);
           if (b.isHellfireLvl5) {
@@ -2814,13 +2821,17 @@ function HelicopterGame({
           
           ctx.fillStyle = '#fef08a'; // hyper dense heat yellow fuel
           ctx.beginPath();
-          ctx.arc(0, 0, b.radius, 0, Math.PI * 2);
+          ctx.moveTo(b.radius, 0);
+          ctx.lineTo(-b.radius, -b.radius / 1.5);
+          ctx.lineTo(-b.radius/2, 0);
+          ctx.lineTo(-b.radius, b.radius / 1.5);
+          ctx.closePath();
           ctx.fill();
 
           // Pulse rings outwards
           ctx.strokeStyle = '#ef4444';
           ctx.lineWidth = 1.5;
-          ctx.strokeRect(-12, -4, 24, 8);
+          ctx.strokeRect(-b.radius * 1.5, -4, b.radius * 3, 8);
         }
         else if (b.type === 'enemy_bullet') {
           // Enemy sniper red bullet: high contrast glowing crimson orb
@@ -3064,11 +3075,7 @@ function HelicopterGame({
         }
         ctx.closePath();
         
-        const grad = ctx.createRadialGradient(0, 0, hexSize * 0.4, 0, 0, hexSize);
-        grad.addColorStop(0, 'rgba(14, 165, 233, 0)');
-        grad.addColorStop(0.5, 'rgba(14, 165, 233, 0.05)');
-        grad.addColorStop(1, 'rgba(125, 211, 252, 0.3)');
-        ctx.fillStyle = grad;
+        ctx.fillStyle = 'rgba(14, 165, 233, 0.1)'; // Flat transparent tech fill instead of circular gradient
         ctx.fill();
 
         // Pulsing intense border when shield active or low
@@ -3077,7 +3084,7 @@ function HelicopterGame({
         ctx.lineWidth = 2 + pulse * 2;
         ctx.stroke();
 
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
         ctx.lineWidth = 1;
         ctx.stroke();
       }
@@ -3113,6 +3120,7 @@ function HelicopterGame({
   }, [gameState, isMobile]);
 
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isMobile) return;
     if (gameStateRef.current !== 'PLAYING') return;
     e.currentTarget.setPointerCapture(e.pointerId);
     const joy = joystickRef.current;
@@ -3143,6 +3151,7 @@ function HelicopterGame({
   };
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isMobile) return;
     if (gameStateRef.current !== 'PLAYING') return;
     const joy = joystickRef.current;
     if (!joy.active) return;
@@ -3178,6 +3187,7 @@ function HelicopterGame({
   };
 
   const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isMobile) return;
     e.currentTarget.releasePointerCapture(e.pointerId);
     const joy = joystickRef.current;
     joy.active = false;
@@ -3239,7 +3249,7 @@ function HelicopterGame({
                 <div className={`w-full bg-slate-900 border rounded-sm overflow-hidden p-0.5 ${mobileMode ? 'h-4' : 'h-5'} ${isHpLow ? 'border-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.8)] animate-pulse' : 'border-slate-800'}`}>
                   <div 
                     className={`h-full rounded-sm transition-all duration-300 ${isHpLow ? 'bg-gradient-to-r from-rose-600 to-rose-400' : 'bg-gradient-to-r from-emerald-600 to-emerald-400'}`}
-                    style={{ width: `${Math.max(0, Math.min(100, (hudHp / hudMaxHp) * 100))}%` }}
+                    style={{ width: `${Math.max(0, Math.min(100, (hudHp / (hudMaxHp || 1)) * 100))}%` }}
                   />
                 </div>
               </div>
@@ -3251,7 +3261,7 @@ function HelicopterGame({
                 <div className="h-1.5 w-full bg-slate-900 border border-slate-800 rounded-sm overflow-hidden p-0.5">
                   <div 
                     className="h-full bg-gradient-to-r from-sky-600 to-sky-400 rounded-sm transition-all duration-300"
-                    style={{ width: `${Math.max(0, Math.min(100, (hudXp / hudMaxXp) * 100))}%` }}
+                    style={{ width: `${Math.max(0, Math.min(100, (hudXp / (hudMaxXp || 1)) * 100))}%` }}
                   />
                 </div>
               </div>
@@ -3543,7 +3553,7 @@ function HelicopterGame({
                 ref={canvasRef}
                 width={800}
                 height={600}
-                className="block w-full lg:max-w-full h-auto rounded outline-none selection:bg-transparent"
+                className="block w-full h-full object-cover lg:max-w-full lg:h-auto lg:object-contain rounded-none lg:rounded outline-none selection:bg-transparent"
               />
 
               {/* WARNING OVERLAY */}
