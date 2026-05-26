@@ -1,6 +1,15 @@
 // Game Types and Interfaces
 
-export type GameState = 'START_MENU' | 'VEHICLE_SELECTION' | 'PLAYING' | 'UPGRADE' | 'GAMEOVER' | 'VICTORY' | 'SLOT_MACHINE';
+export type GameState = 'START_MENU' | 'VEHICLE_SELECTION' | 'PLAYING' | 'UPGRADE' | 'GAMEOVER' | 'VICTORY' | 'SLOT_MACHINE' | 'META_UPGRADES';
+
+export interface MetaUpgrades {
+  armor: number; // Max Level 5
+  speed: number;
+  damage: number;
+  magnet: number;
+}
+
+export const UPGRADE_COSTS = [100, 300, 600, 1000, 1500];
 
 export interface WeaponState {
   type: 'machine_gun' | 'homing_missile' | 'flare' | 'fpv_drone' | 'hellfire' | 'evo_pierce' | 'evo_drones' | 'evo_doomsday' | 'evo_laser_web';

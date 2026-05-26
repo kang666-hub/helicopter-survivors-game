@@ -18,7 +18,7 @@ import {
   Info
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { GameState, Player, Enemy, Bullet, FireTrail, BatteryItem, Particle, UpgradeOption, WeaponState, VehicleType, PassiveState } from './types';
+import { GameState, MetaUpgrades, UPGRADE_COSTS, Player, Enemy, Bullet, FireTrail, BatteryItem, Particle, UpgradeOption, WeaponState, VehicleType, PassiveState } from './types';
 
 const pixelCache: {
   hellfire: HTMLCanvasElement | null;
@@ -178,7 +178,49 @@ function HelicopterGame({
   const [gameState, setGameState] = useState<GameState>(initialGameState);
   const gameStateRef = useRef<GameState>(initialGameState);
 
+  // Meta Progression States
+  const [globalCoins, setGlobalCoins] = useState<number>(0);
+  const globalCoinsRef = useRef<number>(0);
+  const [metaUpgrades, setMetaUpgrades] = useState<MetaUpgrades>({ armor: 0, speed: 0, damage: 0, magnet: 0 });
+  const metaUpgradesRef = useRef<MetaUpgrades>({ armor: 0, speed: 0, damage: 0, magnet: 0 });
+  const [sessionPayout, setSessionPayout] = useState<number>(0);
+
+  useEffect(() => {
+    try {
+      const storedCoins = localStorage.getItem('globalCoins');
+      if (storedCoins) {
+        setGlobalCoins(parseInt(storedCoins, 10));
+        globalCoinsRef.current = parseInt(storedCoins, 10);
+      }
+
+      const storedUpgrades = localStorage.getItem('metaUpgrades');
+      if (storedUpgrades) {
+        const parsed = JSON.parse(storedUpgrades);
+        setMetaUpgrades(parsed);
+        metaUpgradesRef.current = parsed;
+      }
+    } catch (e) {
+      console.warn("Failed to load meta progression", e);
+    }
+  }, []);
+
+  const saveMetaState = (coins: number, upgrades: MetaUpgrades) => {
+    setGlobalCoins(coins);
+    globalCoinsRef.current = coins;
+    setMetaUpgrades(upgrades);
+    metaUpgradesRef.current = upgrades;
+    localStorage.setItem('globalCoins', coins.toString());
+    localStorage.setItem('metaUpgrades', JSON.stringify(upgrades));
+  };
+
+
   const changeGameState = (state: GameState) => {
+    if (state === 'GAMEOVER' && gameStateRef.current !== 'GAMEOVER') {
+      const p = playerRef.current;
+      const earned = p.kills + Math.floor(p.timeElapsed);
+      setSessionPayout(earned);
+      saveMetaState(globalCoinsRef.current + earned, metaUpgradesRef.current);
+    }
     gameStateRef.current = state;
     setGameState(state);
   };
@@ -512,6 +554,7 @@ function HelicopterGame({
 
     // 1. 確保正確讀取全域常數 VEHICLE_PRESETS
     const preset = VEHICLE_PRESETS[selectedVehicle];
+    const finalMaxHp = preset.maxHp + metaUpgradesRef.current.armor * 15;
 
     // 2. 完整初始化玩家核心數據，絕不可遺漏 timeElapsed 等屬性
     playerRef.current = {
@@ -521,8 +564,8 @@ function HelicopterGame({
       vx: 0,
       vy: 0,
       radius: 20,
-      hp: preset.maxHp,
-      maxHp: preset.maxHp,
+      hp: finalMaxHp,
+      maxHp: finalMaxHp,
       shield: 0,
       level: 1,
       xp: 0,
@@ -538,8 +581,8 @@ function HelicopterGame({
     };
     
     // 3. 強制同步所有 React UI 狀態面板
-    setHudHp(preset.maxHp);
-    setHudMaxHp(preset.maxHp);
+    setHudHp(finalMaxHp);
+    setHudMaxHp(finalMaxHp);
     setHudLevel(1);
     setHudXp(0);
     setHudKills(0);
@@ -870,6 +913,7 @@ function HelicopterGame({
 
       // 2. HELICOPTER MOVEMENT WITH INERTIA / DIRECT DRIFTING SLIDE
       let speedScale = p.vehicleType === 'F22' ? 1.4 : (p.vehicleType === 'AC130' ? 0.7 : 1.0);
+      speedScale *= (1 + metaUpgradesRef.current.speed * 0.05);
       const engineOpt = p.passives?.find(ps => ps.type === 'engine');
       if (engineOpt) {
         speedScale *= (1 + 0.08 * engineOpt.level);
@@ -1526,7 +1570,8 @@ function HelicopterGame({
 
             if (collisionDist < hitRadius) {
               // Apply damage!
-              e.hp -= b.damage;
+              const dmgScale = 1 + metaUpgradesRef.current.damage * 0.05;
+              e.hp -= b.damage * dmgScale;
               e.isHitFlash = 3; // flash enemy body brief ticks
               playSound('hit');
 
@@ -1658,7 +1703,8 @@ function HelicopterGame({
         if (frameCountRef.current % 10 === 0) {
           enemies.forEach(e => {
             if (Math.hypot(e.x - tr.x, e.y - tr.y) < tr.radius + e.width / 2) {
-              e.hp -= tr.damage;
+              const dmgScale = 1 + metaUpgradesRef.current.damage * 0.05;
+              e.hp -= tr.damage * dmgScale;
               e.isHitFlash = 2;
             }
           });
@@ -1711,10 +1757,11 @@ function HelicopterGame({
               const dx = p.x + Math.cos(a) * orbitRadius;
               const dy = p.y + Math.sin(a) * orbitRadius;
               
+              const dmgScale = 1 + metaUpgradesRef.current.damage * 0.05;
               enemies.forEach(e => {
                 // Drone contact damage
                 if (Math.hypot(e.x - dx, e.y - dy) < 20 + e.width / 2) {
-                  e.hp -= actualDmg;
+                  e.hp -= actualDmg * dmgScale;
                   e.isHitFlash = 2;
                 }
                 // Laser web damage (long outward beam)
@@ -1730,7 +1777,7 @@ function HelicopterGame({
                   const projX = dx + t * (ex - dx);
                   const projY = dy + t * (ey - dy);
                   if (Math.hypot(e.x - projX, e.y - projY) < e.width / 2 + 10) {
-                    e.hp -= actualLaserDmg;
+                    e.hp -= actualLaserDmg * dmgScale;
                     e.isHitFlash = 2;
                   }
                 }
@@ -2077,7 +2124,7 @@ function HelicopterGame({
         const bat = batteries[bIdx];
         const distToPlayer = Math.hypot(p.x - bat.x, p.y - bat.y);
 
-        let magnetRange = 150; 
+        let magnetRange = 150 + metaUpgradesRef.current.magnet * 20; 
         const magnetOpt = p.passives?.find(ps => ps.type === 'magnet');
         if (magnetOpt) magnetRange += 30 * magnetOpt.level;
         
@@ -3679,6 +3726,13 @@ function HelicopterGame({
 
                       <div className="space-y-2 mt-1">
                         <button
+                          onClick={() => { console.log('OPEN_META_UPGRADES'); playSound('power'); changeGameState('META_UPGRADES'); }}
+                          className="w-full bg-slate-800 hover:bg-slate-700 text-yellow-500 font-mono text-[11px] py-2 px-4 rounded-md border border-slate-700 hover:border-yellow-600 transition-all shadow-md flex justify-between items-center"
+                        >
+                          <span>進入研發中心 (R&D CENTER)</span>
+                          <span className="font-bold flex items-center gap-1">💰 {globalCoinsRef.current}</span>
+                        </button>
+                        <button
                           onClick={() => { console.log('INITIATE_GAME'); initiateGame(); }}
                           id="commence_mission_btn"
                           className="w-full bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-black font-display font-black text-[13px] py-2.5 px-4 rounded-md hover:scale-[1.01] active:scale-[0.99] transition-all shadow-lg shadow-teal-500/20 uppercase tracking-widest block text-center font-bold"
@@ -3692,6 +3746,80 @@ function HelicopterGame({
                       </div>
                     </div>
 
+                  </div>
+                </div>
+              )}
+
+              {/* META UPGRADES R&D CENTER */}
+              {gameState === 'META_UPGRADES' && (
+                <div id="meta_upgrades_overlay" className="absolute inset-x-0 inset-y-0 bg-slate-950/98 flex flex-col items-center justify-center p-4 text-center z-20 backdrop-blur overflow-y-auto">
+                  <div className="max-w-md w-full bg-slate-900 border border-slate-700/50 rounded-xl shadow-2xl p-5 mb-8">
+                    <div className="flex justify-between items-center border-b border-slate-800 pb-3 mb-4">
+                      <div className="text-left">
+                        <h2 className="text-xl font-bold text-white tracking-wider">研發中心</h2>
+                        <div className="text-[10px] text-slate-400 font-mono">R&D CENTER</div>
+                      </div>
+                      <div className="bg-slate-950 px-3 py-1.5 rounded-md border border-yellow-900/50 flex flex-col items-end">
+                        <span className="text-[10px] text-slate-500 font-mono uppercase">Available Funds</span>
+                        <span className="text-yellow-500 font-bold tracking-widest text-lg">💰 {globalCoinsRef.current}</span>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      {[
+                        { key: 'armor' as keyof MetaUpgrades, icon: '🛡️', name: '裝甲強化', desc: '每級 +15 Base HP' },
+                        { key: 'speed' as keyof MetaUpgrades, icon: '🚀', name: '引擎魔改', desc: '每級 +5% 移動速度' },
+                        { key: 'damage' as keyof MetaUpgrades, icon: '💥', name: '武器掛載', desc: '每級 +5% 全傷害' },
+                        { key: 'magnet' as keyof MetaUpgrades, icon: '🧲', name: '雷達擴增', desc: '每級 +20px 吸取範圍' }
+                      ].map(item => {
+                        const level = metaUpgradesRef.current[item.key];
+                        const maxLevel = 5;
+                        const cost = level < maxLevel ? UPGRADE_COSTS[level] : null;
+                        const canAfford = cost !== null && globalCoinsRef.current >= cost;
+
+                        return (
+                          <div key={item.key} className="bg-slate-950/50 border border-slate-800 rounded-lg p-3 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <span className="text-2xl drop-shadow-md">{item.icon}</span>
+                              <div className="text-left">
+                                <div className="text-[13px] font-bold text-slate-200 flex items-center gap-2">
+                                  {item.name}
+                                  <span className="text-[10px] font-mono bg-slate-800 px-1.5 py-0.5 rounded text-cyan-400">LV {level}/{maxLevel}</span>
+                                </div>
+                                <div className="text-[10px] text-slate-500 font-mono">{item.desc}</div>
+                              </div>
+                            </div>
+                            <button
+                              disabled={!canAfford || cost === null}
+                              onClick={() => {
+                                if (canAfford && cost) {
+                                  const newCoins = globalCoinsRef.current - cost;
+                                  const newUpgrades = { ...metaUpgradesRef.current, [item.key]: level + 1 };
+                                  saveMetaState(newCoins, newUpgrades);
+                                  playSound('power');
+                                }
+                              }}
+                              className={`px-3 py-1.5 rounded-md font-mono text-[11px] font-bold transition-all ${
+                                cost === null 
+                                  ? 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed'
+                                  : canAfford 
+                                    ? 'bg-yellow-600/20 text-yellow-500 border border-yellow-600/50 hover:bg-yellow-600 hover:text-white'
+                                    : 'bg-rose-950/30 text-rose-500 border border-rose-900/50 cursor-not-allowed opacity-60'
+                              }`}
+                            >
+                              {cost === null ? 'MAXED' : `🪙 ${cost}`}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <button
+                      onClick={() => { playSound('power'); changeGameState('VEHICLE_SELECTION'); }}
+                      className="w-full mt-5 bg-slate-800 hover:bg-slate-700 text-white font-mono text-xs py-2.5 rounded-md transition-all shadow-md active:scale-95"
+                    >
+                      返回機庫 / RETURN TO HANGAR
+                    </button>
                   </div>
                 </div>
               )}
@@ -3915,6 +4043,13 @@ function HelicopterGame({
                             <span className="text-slate-500">無 (尚未合體成功)</span>
                           )}
                         </span>
+                      </div>
+                      <div className="flex items-center justify-between pt-2">
+                        <span className="text-yellow-400 font-bold uppercase tracking-widest text-[13px] bg-yellow-950/40 px-2 py-0.5 rounded animate-pulse">💰 獲得戰備資金:</span>
+                        <div className="text-right flex flex-col">
+                          <span className="font-black text-yellow-500 text-lg">+{sessionPayout}</span>
+                          <span className="text-[9px] text-yellow-600/70 uppercase">總資金: {globalCoinsRef.current}</span>
+                        </div>
                       </div>
                     </div>
 
