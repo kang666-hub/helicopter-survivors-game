@@ -3053,7 +3053,7 @@ function HelicopterGame({
       // Draw Hexagonal Shield
       if (p.shield > 0) {
         ctx.beginPath();
-        const hexSize = p.radius + 15;
+        const hexSize = p.radius + 18;
         for (let i = 0; i < 6; i++) {
           const angle_deg = 60 * i - 30; // rotated
           const angle_rad = Math.PI / 180 * angle_deg;
@@ -3064,20 +3064,22 @@ function HelicopterGame({
         }
         ctx.closePath();
         
-        ctx.fillStyle = 'rgba(14, 165, 233, 0.15)';
+        const grad = ctx.createRadialGradient(0, 0, hexSize * 0.4, 0, 0, hexSize);
+        grad.addColorStop(0, 'rgba(14, 165, 233, 0)');
+        grad.addColorStop(0.5, 'rgba(14, 165, 233, 0.05)');
+        grad.addColorStop(1, 'rgba(125, 211, 252, 0.3)');
+        ctx.fillStyle = grad;
         ctx.fill();
 
         // Pulsing intense border when shield active or low
         const pulse = 0.5 + Math.sin(Date.now() / 150) * 0.5;
-        ctx.strokeStyle = `rgba(56, 189, 248, ${0.5 + pulse * 0.5})`;
+        ctx.strokeStyle = `rgba(56, 189, 248, ${0.4 + pulse * 0.6})`;
         ctx.lineWidth = 2 + pulse * 2;
         ctx.stroke();
 
-        if (pulse > 0.8) {
-          ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
-          ctx.lineWidth = 1;
-          ctx.stroke();
-        }
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
       }
 
       ctx.restore(); // retrieve shake translation frames safely
@@ -3201,10 +3203,15 @@ function HelicopterGame({
     const combinedItems = [
       ...(p.weapons || []).map(w => ({ type: w.type, level: w.level, isEvo: w.level >= 6 })),
       ...(p.passives || []).map(ps => ({ type: ps.type, level: ps.level, isEvo: false }))
-    ].slice(0, 6);
+    ];
 
-    while (combinedItems.length < 6) {
-      combinedItems.push({ type: 'empty', level: 0, isEvo: false });
+    if (!mobileMode) {
+      const sliceItems = combinedItems.slice(0, 6);
+      while (sliceItems.length < 6) {
+        sliceItems.push({ type: 'empty', level: 0, isEvo: false });
+      }
+      combinedItems.length = 0;
+      combinedItems.push(...sliceItems);
     }
 
     const isHpLow = (hudMaxHp > 0) && (hudHp / hudMaxHp) <= 0.3;
@@ -3230,11 +3237,9 @@ function HelicopterGame({
                   <span className="text-white font-bold">{hudHp}/{hudMaxHp}</span>
                 </div>
                 <div className={`w-full bg-slate-900 border rounded-sm overflow-hidden p-0.5 ${mobileMode ? 'h-4' : 'h-5'} ${isHpLow ? 'border-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.8)] animate-pulse' : 'border-slate-800'}`}>
-                  <motion.div 
-                    className={`h-full rounded-sm ${isHpLow ? 'bg-gradient-to-r from-rose-600 to-rose-400' : 'bg-gradient-to-r from-emerald-600 to-emerald-400'}`}
-                    initial={{ width: '100%' }}
-                    animate={{ width: `${(hudHp / hudMaxHp) * 100}%` }}
-                    transition={{ type: 'spring', stiffness: 80, damping: 15 }}
+                  <div 
+                    className={`h-full rounded-sm transition-all duration-300 ${isHpLow ? 'bg-gradient-to-r from-rose-600 to-rose-400' : 'bg-gradient-to-r from-emerald-600 to-emerald-400'}`}
+                    style={{ width: `${Math.max(0, Math.min(100, (hudHp / hudMaxHp) * 100))}%` }}
                   />
                 </div>
               </div>
@@ -3244,10 +3249,9 @@ function HelicopterGame({
                   <span className="text-white font-bold">{hudXp}/{hudMaxXp}</span>
                 </div>
                 <div className="h-1.5 w-full bg-slate-900 border border-slate-800 rounded-sm overflow-hidden p-0.5">
-                  <motion.div 
-                    className="h-full bg-gradient-to-r from-sky-600 to-sky-400 rounded-sm"
-                    animate={{ width: `${(hudXp / hudMaxXp) * 100}%` }}
-                    transition={{ ease: 'easeOut', duration: 0.15 }}
+                  <div 
+                    className="h-full bg-gradient-to-r from-sky-600 to-sky-400 rounded-sm transition-all duration-300"
+                    style={{ width: `${Math.max(0, Math.min(100, (hudXp / hudMaxXp) * 100))}%` }}
                   />
                 </div>
               </div>
@@ -3273,10 +3277,10 @@ function HelicopterGame({
             </div>
           </div>
 
-          {/* INVENTORY SLOTS (6 max) */}
-          <div className={`${mobileMode ? 'w-full' : 'absolute top-[120px] left-3.5 w-72'} bg-slate-950/80 border border-slate-800/80 rounded-lg p-1.5 backdrop-blur flex justify-between gap-1`}>
+          {/* INVENTORY SLOTS */}
+          <div className={`${mobileMode ? 'w-full overflow-x-auto flex gap-1.5 pb-1' : 'absolute top-[120px] left-3.5 w-72 bg-slate-950/80 border border-slate-800/80 rounded-lg p-1.5 backdrop-blur flex justify-between gap-1'}`}>
             {combinedItems.map((item, idx) => (
-              <div key={idx} className="flex-1 aspect-square bg-slate-900 border border-slate-800 rounded flex items-center justify-center relative shadow-inner">
+              <div key={idx} className={`${mobileMode ? 'shrink-0 h-10 w-10 flex items-center justify-center' : 'flex-1 aspect-square flex items-center justify-center'} bg-slate-900 border border-slate-800 rounded relative shadow-inner`}>
                 {item.type !== 'empty' && (
                   <>
                     <span className="text-sm">{iconsMap[item.type] || '❓'}</span>
@@ -3331,11 +3335,34 @@ function HelicopterGame({
   };
 
   return (
-    <div id="game_app_container" className="arcade-wrapper w-full h-[100dvh] lg:min-h-screen bg-slate-950 text-slate-100 font-sans select-none overflow-hidden lg:overflow-x-hidden lg:flex lg:flex-col lg:items-center lg:justify-center grid grid-rows-[auto_1fr_auto] lg:block lg:px-4 lg:py-8">
-      {/* MOBILE HEADER */}
-      <div className="lg:hidden w-full">
-        <CockpitHUD mobileMode={true} />
-      </div>
+      <div 
+        id="game_app_container" 
+        className="arcade-wrapper w-full h-[100dvh] lg:min-h-screen bg-slate-950 text-slate-100 font-sans select-none overflow-hidden lg:overflow-x-hidden lg:flex lg:flex-col lg:items-center lg:justify-center grid grid-rows-[auto_1fr_auto] lg:block lg:px-4 lg:py-8 touch-none relative"
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+      >
+        {/* Floating Joystick Visuals (Global Fullscreen) */}
+        <div 
+          ref={joystickBaseRef} 
+          className="absolute w-24 h-24 rounded-full border-2 border-cyan-500/50 bg-cyan-900/20 shadow-[0_0_15px_rgba(34,211,238,0.2)] pointer-events-none z-[100]" 
+          style={{ display: 'none', transform: 'translate(-50%, -50%)' }}
+        >
+          {/* Inner Knob */}
+          <div 
+            ref={joystickKnobRef}
+            className="absolute top-1/2 left-1/2 w-10 h-10 -ml-5 -mt-5 bg-cyan-400 rounded-full shadow-[0_0_10px_rgba(34,211,238,0.8)] border-2 border-white/50 pointer-events-none"
+            style={{ transform: 'translate(-50%, -50%)' }}
+          />
+        </div>
+
+        {/* MOBILE HEADER */}
+        <div className="lg:hidden w-full z-50 pointer-events-none">
+          <div className="pointer-events-auto">
+            <CockpitHUD mobileMode={true} />
+          </div>
+        </div>
 
       {/* Absolute futuristic HUD command deck console casing */}
       <div className="w-full max-w-5xl flex flex-col gap-4 flex-1 lg:flex-none">
@@ -3919,34 +3946,6 @@ function HelicopterGame({
 
         </div>
 
-      </div>
-
-      {/* MOBILE CONTROLS FOOTER */}
-      <div 
-        className="lg:hidden w-full h-[180px] bg-[#111] border-t-2 border-slate-800 relative z-10 touch-none flex flex-col justify-center select-none"
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerUp}
-      >
-        {/* Helper instructions */}
-        <div className="absolute top-2 w-full text-center text-[10px] text-slate-500 font-mono tracking-widest uppercase pointer-events-none">
-          - 觸控此區域以移動直升機 -
-        </div>
-        
-        {/* Floating Joystick Visuals */}
-        <div 
-          ref={joystickBaseRef} 
-          className="absolute w-24 h-24 rounded-full border-2 border-cyan-500/50 bg-cyan-900/20 shadow-[0_0_15px_rgba(34,211,238,0.2)] pointer-events-none" 
-          style={{ display: 'none', transform: 'translate(-50%, -50%)' }}
-        >
-          {/* Inner Knob */}
-          <div 
-            ref={joystickKnobRef}
-            className="absolute top-1/2 left-1/2 w-10 h-10 -ml-5 -mt-5 bg-cyan-400 rounded-full shadow-[0_0_10px_rgba(34,211,238,0.8)] border-2 border-white/50"
-            style={{ transform: 'translate(-50%, -50%)' }}
-          />
-        </div>
       </div>
 
       {/* 簡易成就彈出式提醒 */}
