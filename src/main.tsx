@@ -14,7 +14,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
     console.error("Uncaught error:", error, errorInfo);
   }
 
-  render() {
+  render(): ReactNode {
     if (this.state.hasError) {
       return (
         <div style={{ color: 'white', backgroundColor: 'black', padding: '20px', fontFamily: 'monospace' }}>
@@ -24,7 +24,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
       );
     }
 
-    return this.props.children;
+    return (this as any).props.children;
   }
 }
 

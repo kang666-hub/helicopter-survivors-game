@@ -8,6 +8,11 @@ export interface WeaponState {
   cooldownTimer: number; // in seconds
 }
 
+export interface PassiveState {
+  type: 'armor' | 'engine' | 'magnet';
+  level: number; // 1-5
+}
+
 export type VehicleType = 'AH64' | 'F22' | 'AC130';
 
 export interface Player {
@@ -25,6 +30,7 @@ export interface Player {
   angle: number; // rotation for rotor blades and tilt
   rotorAngle: number; // rotor rotation angle
   weapons: WeaponState[];
+  passives: PassiveState[];
   kills: number;
   timeElapsed: number; // in seconds
   vehicleType?: VehicleType;
@@ -102,7 +108,7 @@ export interface Particle {
 
 export interface UpgradeOption {
   id: string;
-  type: 'machine_gun' | 'homing_missile' | 'flare' | 'fpv_drone' | 'hellfire' | 'evo_pierce' | 'evo_drones' | 'evo_doomsday' | 'evo_laser_web' | 'heal' | 'max_hp';
+  type: 'machine_gun' | 'homing_missile' | 'flare' | 'fpv_drone' | 'hellfire' | 'evo_pierce' | 'evo_drones' | 'evo_doomsday' | 'evo_laser_web' | 'heal' | 'max_hp' | 'armor' | 'engine' | 'magnet';
   title: string;
   description: string;
   icon: string;

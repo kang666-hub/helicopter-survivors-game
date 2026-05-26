@@ -18,7 +18,63 @@ import {
   Info
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { GameState, Player, Enemy, Bullet, FireTrail, BatteryItem, Particle, UpgradeOption, WeaponState, VehicleType } from './types';
+import { GameState, Player, Enemy, Bullet, FireTrail, BatteryItem, Particle, UpgradeOption, WeaponState, VehicleType, PassiveState } from './types';
+
+const pixelCache: {
+  hellfire: HTMLCanvasElement | null;
+  drone: HTMLCanvasElement | null;
+} = {
+  hellfire: null,
+  drone: null,
+};
+
+function initPixelRenderCache() {
+  if (typeof document === 'undefined') return;
+
+  // Hellfire Cache (24 x 12)
+  const hc = document.createElement('canvas');
+  hc.width = 24;
+  hc.height = 12;
+  const hctx = hc.getContext('2d');
+  if (hctx) {
+    hctx.fillStyle = '#1e293b'; 
+    hctx.fillRect(4, 3, 12, 6);
+    hctx.fillStyle = '#475569'; 
+    hctx.fillRect(4, 3, 12, 2);
+    hctx.fillStyle = '#991b1b'; 
+    hctx.fillRect(16, 4, 6, 4);
+    hctx.fillStyle = '#f87171'; 
+    hctx.fillRect(22, 5, 2, 2);
+    hctx.fillStyle = '#64748b'; 
+    hctx.fillRect(2, 2, 4, 2);
+    hctx.fillRect(2, 8, 4, 2);
+    hctx.fillStyle = '#0f172a'; 
+    hctx.fillRect(2, 4, 2, 4);
+  }
+  pixelCache.hellfire = hc;
+
+  // Drone Cache (16 x 16)
+  const dc = document.createElement('canvas');
+  dc.width = 16;
+  dc.height = 16;
+  const dctx = dc.getContext('2d');
+  if (dctx) {
+    dctx.fillStyle = '#111827';
+    dctx.fillRect(6, 6, 4, 4);
+    dctx.fillStyle = '#374151';
+    dctx.beginPath(); dctx.moveTo(6, 6); dctx.lineTo(2, 2); dctx.lineTo(4, 2); dctx.lineTo(8, 6); dctx.fill();
+    dctx.beginPath(); dctx.moveTo(10, 6); dctx.lineTo(14, 2); dctx.lineTo(12, 2); dctx.lineTo(8, 6); dctx.fill();
+    dctx.beginPath(); dctx.moveTo(6, 10); dctx.lineTo(2, 14); dctx.lineTo(4, 14); dctx.lineTo(8, 10); dctx.fill();
+    dctx.beginPath(); dctx.moveTo(10, 10); dctx.lineTo(14, 14); dctx.lineTo(12, 14); dctx.lineTo(8, 10); dctx.fill();
+    dctx.fillStyle = 'rgba(34, 211, 238, 0.8)';
+    dctx.beginPath(); dctx.arc(3, 3, 3, 0, Math.PI * 2); dctx.fill();
+    dctx.beginPath(); dctx.arc(13, 3, 3, 0, Math.PI * 2); dctx.fill();
+    dctx.beginPath(); dctx.arc(3, 13, 3, 0, Math.PI * 2); dctx.fill();
+    dctx.beginPath(); dctx.arc(13, 13, 3, 0, Math.PI * 2); dctx.fill();
+  }
+  pixelCache.drone = dc;
+}
+initPixelRenderCache();
 
 interface Achievement {
   id: string;
@@ -476,6 +532,7 @@ function HelicopterGame({
       weapons: [
         { type: preset.initialWeapon, level: 1, cooldownTimer: 0 }
       ],
+      passives: [],
       kills: 0,
       timeElapsed: 0, // 修復 NaN:NaN 的絕對關鍵
     };
@@ -520,14 +577,17 @@ function HelicopterGame({
     
     // Check eligible paths
     const p = playerRef.current;
-    const currentWeapons = p.weapons;
-    const options: UpgradeOption[] = [];
-
-    // Dictionary system for checking weapon levels quickly
+    if (!p.passives) p.passives = []; // safety
+    
     const wLevels: Record<string, number> = {};
-    currentWeapons.forEach(w => {
-      wLevels[w.type] = w.level;
-    });
+    p.weapons.forEach(w => { wLevels[w.type] = w.level; });
+    const pLevels: Record<string, number> = {};
+    p.passives.forEach(ps => { pLevels[ps.type] = ps.level; });
+    
+    const totalSlots = p.weapons.length + p.passives.length;
+    const maxSlotsReached = totalSlots >= 6;
+
+    const options: UpgradeOption[] = [];
 
     const EVOLUTION_RECIPES = [
       { w1: 'machine_gun', w2: 'flare', result: 'evo_pierce', name: '🔥 燃燒穿甲彈 (Incendiary Pierce)', desc: '【超武進化】貫穿彈道附帶擴散紅炎，造成路徑持續範圍燒傷。', icon: '🔥' },
@@ -540,7 +600,7 @@ function HelicopterGame({
       if (wLevels[recipe.w1] === 5 && wLevels[recipe.w2] === 5 && !wLevels[recipe.result]) {
         options.push({
           id: recipe.result,
-          type: recipe.result as any, // bypassing strict type checking here
+          type: recipe.result as any,
           title: recipe.name,
           description: recipe.desc,
           icon: recipe.icon,
@@ -550,7 +610,10 @@ function HelicopterGame({
       }
     });
 
-    // We define standard weapons
+    const hasEvolvedBase = (baseType: string) => {
+       return EVOLUTION_RECIPES.some(r => (r.w1 === baseType || r.w2 === baseType) && wLevels[r.result]);
+    };
+
     const BASE_WEAPONS = [
       { type: 'machine_gun', name: '機槍', icon: '🔫', descBase: '前向高速連發機槍。', descLvlUp: '射速與傷害提昇。', descLvl5: '【紅色雷射】極快連射光束！' },
       { type: 'homing_missile', name: '追蹤飛彈', icon: '🎯', descBase: '解鎖重型雷達防衛，鎖定畫面最高血量目標。', descLvlUp: '威力提昇、冷卻縮短。', descLvl5: '【蜂群飛彈】4 枚飛彈拖著長白煙鎖定！' },
@@ -561,54 +624,42 @@ function HelicopterGame({
 
     BASE_WEAPONS.forEach(bw => {
       const curlvl = wLevels[bw.type] || 0;
-      if (curlvl === 0) {
+      if (hasEvolvedBase(bw.type)) return; 
+      
+      if (curlvl === 0 && !maxSlotsReached) {
         options.push({
-          id: `${bw.type}_unlock`,
-          type: bw.type as any,
-          title: `解鎖 ${bw.name}`,
-          description: bw.descBase,
-          icon: bw.icon,
-          isEvolution: false
+          id: `${bw.type}_unlock`, type: bw.type as any, title: `解鎖 ${bw.name}`, description: bw.descBase, icon: bw.icon, isEvolution: false
         });
-      } else if (curlvl < 5) {
+      } else if (curlvl > 0 && curlvl < 5) {
         options.push({
-          id: `${bw.type}_up`,
-          type: bw.type as any,
-          title: `${bw.name} Lv.${curlvl} -> Lv.${curlvl + 1}`,
-          description: curlvl === 4 ? bw.descLvl5 : bw.descLvlUp,
-          icon: bw.icon,
-          isEvolution: false
+          id: `${bw.type}_up`, type: bw.type as any, title: `${bw.name} Lv.${curlvl} -> Lv.${curlvl + 1}`, description: curlvl === 4 ? bw.descLvl5 : bw.descLvlUp, icon: bw.icon, isEvolution: false
         });
       }
     });
 
-    // Supplement support options so we always guarantee a nice pool
-    options.push({
-      id: 'heal',
-      type: 'heal',
-      title: '應急整修與油料 (Tactical Field Repair)',
-      description: '空投救援箱，立即恢復高達 50 點機體耐久值(HP)。',
-      icon: '🔧',
-      isEvolution: false
+    const PASSIVE_ITEMS = [
+      { type: 'armor', name: '奈米複合裝甲', icon: '🛡️', descBase: '獲得固定減傷防護。', descLvlUp: 'HP上限提升20，傷害減免提升5%。' },
+      { type: 'engine', name: '超載推進引擎', icon: '🚀', descBase: '極限提升機體機動力。', descLvlUp: '移動速度提升 8%。' },
+      { type: 'magnet', name: '引力經驗模組', icon: '🧲', descBase: '擴大能量電池吸取範圍並提升倍率。', descLvlUp: '吸取半徑 +30px，獲得 XP 增加 10%。' }
+    ];
+
+    PASSIVE_ITEMS.forEach(ps => {
+      const curlvl = pLevels[ps.type] || 0;
+      if (curlvl === 0 && !maxSlotsReached) {
+        options.push({ id: `${ps.type}_unlock`, type: ps.type as any, title: `裝備 ${ps.name}`, description: ps.descBase, icon: ps.icon, isEvolution: false});
+      } else if (curlvl > 0 && curlvl < 5) {
+        options.push({ id: `${ps.type}_up`, type: ps.type as any, title: `${ps.name} Lv.${curlvl} -> Lv.${curlvl + 1}`, description: ps.descLvlUp, icon: ps.icon, isEvolution: false});
+      }
     });
 
-    options.push({
-      id: 'max_hp',
-      type: 'max_hp',
-      title: '外掛反應裝甲 (Reactive Armor Plating)',
-      description: '大幅強化戰鬥機體防禦力，上限 HP +20 點，並當場補滿所有受損裝甲。',
-      icon: '🛡️',
-      isEvolution: false
-    });
+    options.push({ id: 'heal', type: 'heal', title: '應急整修與油料 (Tactical Field Repair)', description: '空投救援箱，立即恢復高達 50 點耐久(HP)。', icon: '🔧', isEvolution: false });
 
     // Pick 3 options randomly
     const shuffled = [...options].sort(() => 0.5 - Math.random());
-    // Ensure if we have an evolution, it prioritizes showing up as high-tier gameplay satisfaction
     const pickedOptions: UpgradeOption[] = [];
     const evos = shuffled.filter(o => o.isEvolution);
     const standard = shuffled.filter(o => !o.isEvolution);
 
-    // Grab evos first to make sure player notices them
     pickedOptions.push(...evos);
     while (pickedOptions.length < 3 && standard.length > 0) {
       const nextOpt = standard.shift();
@@ -633,17 +684,23 @@ function HelicopterGame({
 
     if (recipes[opt.type]) {
       const rec = recipes[opt.type];
-      // Note: we just evolve by adding the new weapon, but typical Vampire Survivors doesn't remove base weapons necessarily! 
-      // Wait, original logic removed w.type !== 'homing_missile' or whatever. Let's consume both!
       p.weapons = p.weapons.filter(w => w.type !== rec.w1 && w.type !== rec.w2);
       p.weapons.push({ type: opt.type as any, level: 6, cooldownTimer: 0 }); // 6 acts as Evo
       setActiveEvolutions(prev => [...prev, rec.titleName]);
       playSound('power');
     } else if (opt.type === 'heal') {
       p.hp = Math.min(p.maxHp, p.hp + 50);
-    } else if (opt.type === 'max_hp') {
-      p.maxHp += 20;
-      p.hp = p.maxHp;
+    } else if (['armor', 'engine', 'magnet'].includes(opt.type)) {
+      const ps = p.passives.find(ps => ps.type === opt.type);
+      if (ps) {
+        ps.level += 1;
+      } else {
+        p.passives.push({ type: opt.type as any, level: 1 });
+      }
+      if (opt.type === 'armor') {
+        p.maxHp += 20;
+        p.hp += 20; 
+      }
     } else {
       // Base Weapon Add or Upgrade
       const w = p.weapons.find(w => w.type === opt.type);
@@ -656,7 +713,7 @@ function HelicopterGame({
 
     // Sync state
     setWeapons([...p.weapons]);
-    setHudHp(p.hp);
+    setHudHp(Math.floor(p.hp));
     setHudMaxHp(p.maxHp);
 
     // Return to main battle
@@ -670,69 +727,78 @@ function HelicopterGame({
     isPlayingRef.current = false;
     changeGameState('SLOT_MACHINE');
     
-    // 2. Identify rolling candidates from current weapons that are level < 5.
+    // 2. Identify rolling candidates from current weapons and passives that are level < 5.
     const p = playerRef.current;
-    const candidates = p.weapons.filter(w => w.level < 5);
+    if (!p.passives) p.passives = [];
+    
+    // Combine upgradeable items
+    const weaponCandidates = p.weapons.filter(w => w.level < 5 && w.level > 0).map(w => ({ ...w, _ref: w, isPass: false }));
+    const passiveCandidates = p.passives.filter(ps => ps.level < 5 && ps.level > 0).map(ps => ({ ...ps, _ref: ps, isPass: true }));
+    
+    const candidates = [...weaponCandidates, ...passiveCandidates];
     
     setSlotRolling(true);
     setSlotResultWeapon(null);
     
     // Weapon descriptions list for UI
-    const weaponIconsMap: Record<string, string> = {
-      machine_gun: '🔫',
-      homing_missile: '🎯',
-      flare: '☀️',
-      fpv_drone: '🛸',
-      hellfire: '🌋',
+    const iconsMap: Record<string, string> = {
+      machine_gun: '🔫', homing_missile: '🎯', flare: '☀️', fpv_drone: '🛸', hellfire: '🌋',
+      armor: '🛡️', engine: '🚀', magnet: '🧲'
     };
-    const weaponNamesMap: Record<string, string> = {
-      machine_gun: '自動化重機槍 / MACHINE GUN',
-      homing_missile: '雷達追蹤飛彈 / HOMING MISSILE',
-      flare: '側翼高熱熱焰彈 / HEAT FLARE',
-      fpv_drone: '環繞護衛機 / FPV DRONE',
-      hellfire: '地獄火飛彈 / HELLFIRE',
+    const namesMap: Record<string, string> = {
+      machine_gun: '自動化重機槍', homing_missile: '追蹤飛彈', flare: '熱焰彈', fpv_drone: '環繞護衛機', hellfire: '地獄火飛彈',
+      armor: '奈米複合裝甲', engine: '超載推進引擎', magnet: '引力經驗模組'
     };
 
-    const rollList = candidates.length > 0 ? candidates : p.weapons;
-
-    if (rollList.length === 0) {
-      // Emergency: no upgradable weapons
+    if (candidates.length === 0) {
+      // Emergency: no upgradable items
       setSlotCurrentIcon('🔧');
       setSlotCurrentName('戰地緊急維修 / EMERGENCY REPAIR');
       setSlotRolling(false);
       p.hp = Math.min(p.maxHp, p.hp + 50);
-      setHudHp(p.hp);
+      setHudHp(Math.floor(p.hp));
       return;
     }
 
     // 3. Start a rolling animation container interval that fires for 2 seconds
     let rollTicks = 0;
-    const maxTicks = 15; // 15 updates
+    const maxTicks = 15;
     const intervalId = setInterval(() => {
       rollTicks++;
-      const randWIndex = Math.floor(Math.random() * rollList.length);
-      const tempW = rollList[randWIndex];
-      setSlotCurrentIcon(weaponIconsMap[tempW.type] || '🚀');
-      setSlotCurrentName(weaponNamesMap[tempW.type] || tempW.type.toUpperCase());
+      const randWIndex = Math.floor(Math.random() * candidates.length);
+      const tempI = candidates[randWIndex];
+      setSlotCurrentIcon(iconsMap[tempI.type] || '✨');
+      setSlotCurrentName(namesMap[tempI.type] || tempI.type.toUpperCase());
       
-      // Slot machine tick audio sound
       playSound('shoot');
 
       if (rollTicks >= maxTicks) {
         clearInterval(intervalId);
         
         // Finalized Selection!
-        const finalW = rollList[Math.floor(Math.random() * rollList.length)];
-        setSlotCurrentIcon(weaponIconsMap[finalW.type] || '🚀');
-        setSlotCurrentName(weaponNamesMap[finalW.type] || finalW.type.toUpperCase());
+        const finalI = candidates[Math.floor(Math.random() * candidates.length)];
+        setSlotCurrentIcon(iconsMap[finalI.type] || '✨');
+        setSlotCurrentName(namesMap[finalI.type] || finalI.type.toUpperCase());
         setSlotRolling(false);
-        setSlotResultWeapon(finalW);
+        // We typecast or bypass for visual rendering in Slot_Machine
+        setSlotResultWeapon(finalI.isPass ? { type: finalI.type as any, level: finalI.level, cooldownTimer: 0 } : finalI._ref as WeaponState);
         
-        // Upgrade level in player structure immediately
-        finalW.level += 1;
+        // Upgrade level safely
+        if (finalI.isPass) {
+          const psRef = finalI._ref as PassiveState;
+          psRef.level += 1;
+          if (psRef.type === 'armor') {
+            p.maxHp += 20;
+            p.hp += 20;
+            setHudMaxHp(p.maxHp);
+          }
+        } else {
+          const wRef = finalI._ref as WeaponState;
+          wRef.level += 1;
+          setWeapons([...p.weapons]);
+        }
         
-        // Sync states
-        setWeapons([...p.weapons]);
+        setHudHp(Math.floor(p.hp));
         playSound('power');
       }
     }, 120);
@@ -803,7 +869,11 @@ function HelicopterGame({
       });
 
       // 2. HELICOPTER MOVEMENT WITH INERTIA / DIRECT DRIFTING SLIDE
-      const speedScale = p.vehicleType === 'F22' ? 1.4 : (p.vehicleType === 'AC130' ? 0.7 : 1.0);
+      let speedScale = p.vehicleType === 'F22' ? 1.4 : (p.vehicleType === 'AC130' ? 0.7 : 1.0);
+      const engineOpt = p.passives?.find(ps => ps.type === 'engine');
+      if (engineOpt) {
+        speedScale *= (1 + 0.08 * engineOpt.level);
+      }
       const acc = 1.1; // Thrust force
       const friction = 0.90; // Drift weight (drag coefficient)
       let ax = 0;
@@ -1413,7 +1483,13 @@ function HelicopterGame({
             }
 
             if (playerInvincibleTicksRef.current <= 0 && !isF22Stealth) {
-              let dmg = 8; // standard damage from red sniper bullet
+              let baseDmg = 8; // standard damage from red sniper bullet
+              if (p.vehicleType === 'AH64') baseDmg *= 0.8;
+              const armorOpt = p.passives?.find(ps => ps.type === 'armor');
+              if (armorOpt) baseDmg *= (1 - 0.05 * armorOpt.level);
+              
+              let dmg = Math.max(1, Math.round(baseDmg));
+
               if (p.shield > 0) {
                 if (p.shield >= dmg) {
                   p.shield -= dmg;
@@ -1956,6 +2032,9 @@ function HelicopterGame({
             if (p.vehicleType === 'AH64') {
               baseDmg *= 0.8; // Ah64 Armored passive (20% passive reduction)
             }
+            const armorOpt = p.passives?.find(ps => ps.type === 'armor');
+            if (armorOpt) baseDmg *= (1 - 0.05 * armorOpt.level);
+            
             let finalDmg = Math.max(1, Math.round(baseDmg));
             
             if (p.shield > 0) {
@@ -1998,8 +2077,10 @@ function HelicopterGame({
         const bat = batteries[bIdx];
         const distToPlayer = Math.hypot(p.x - bat.x, p.y - bat.y);
 
-        // Within magnetism catch range (highly boosted to 150px for ultimate pickups)
-        const magnetRange = 150; 
+        let magnetRange = 150; 
+        const magnetOpt = p.passives?.find(ps => ps.type === 'magnet');
+        if (magnetOpt) magnetRange += 30 * magnetOpt.level;
+        
         if (distToPlayer < magnetRange || bat.vying) {
           bat.vying = true; // lock tracking state
 
@@ -2090,7 +2171,10 @@ function HelicopterGame({
               playSound('power');
               triggerSlotMachine();
             } else {
-              p.xp += bat.xpValue;
+              let xpGain = bat.xpValue;
+              const magnetOpt = p.passives?.find(ps => ps.type === 'magnet');
+              if (magnetOpt) xpGain *= (1 + 0.10 * magnetOpt.level);
+              p.xp += Math.floor(xpGain);
               
               // Gain score/battery absorption audio
               playSound('shoot');
@@ -2578,12 +2662,16 @@ function HelicopterGame({
             ctx.translate(dp.x, dp.y);
             ctx.rotate(dp.a * 2); // fast drone self rotation
 
-            // Simple cute metallic cube
-            ctx.fillStyle = '#475569';
-            ctx.fillRect(-6, -6, 12, 12);
-            // Green sensor eye (Cyan for evo web)
-            ctx.fillStyle = evoLaserWeb ? '#22d3ee' : '#22c55e';
-            ctx.fillRect(-2, -5, 4, 3);
+            if (pixelCache.drone) {
+              ctx.drawImage(pixelCache.drone, -8, -8);
+            } else {
+              // Fallback Simple cute metallic cube
+              ctx.fillStyle = '#475569';
+              ctx.fillRect(-6, -6, 12, 12);
+              // Green sensor eye (Cyan for evo web)
+              ctx.fillStyle = evoLaserWeb ? '#22d3ee' : '#22c55e';
+              ctx.fillRect(-2, -5, 4, 3);
+            }
             
             // Little tiny thruster flame particle representation
             ctx.fillStyle = '#f59e0b';
@@ -2688,37 +2776,36 @@ function HelicopterGame({
           const ang = b.angle !== undefined ? b.angle : Math.atan2(b.vy, b.vx);
           ctx.rotate(ang);
           
-          // Massive missile body
-          ctx.fillStyle = '#475569';
-          ctx.fillRect(-14, -6, 20, 12);
-          
-          // Warhead cone 
-          ctx.fillStyle = '#1e293b';
-          ctx.beginPath();
-          ctx.moveTo(6, -6);
-          ctx.lineTo(16, 0);
-          ctx.lineTo(6, 6);
-          ctx.closePath();
-          ctx.fill();
-          
-          ctx.fillStyle = '#dc2626'; // red hazard tip
-          ctx.beginPath();
-          ctx.moveTo(12, -2.4);
-          ctx.lineTo(16, 0);
-          ctx.lineTo(12, 2.4);
-          ctx.closePath();
-          ctx.fill();
+          if (pixelCache.hellfire) {
+             ctx.drawImage(pixelCache.hellfire, -20, -6);
+          } else {
+            // Massive missile body fallback
+            ctx.fillStyle = '#475569';
+            ctx.fillRect(-14, -6, 20, 12);
+            
+            // Warhead cone 
+            ctx.fillStyle = '#1e293b';
+            ctx.beginPath();
+            ctx.moveTo(6, -6);
+            ctx.lineTo(16, 0);
+            ctx.lineTo(6, 6);
+            ctx.closePath();
+            ctx.fill();
+            
+            ctx.fillStyle = '#dc2626'; // red hazard tip
+            ctx.beginPath();
+            ctx.moveTo(12, -2.4);
+            ctx.lineTo(16, 0);
+            ctx.lineTo(12, 2.4);
+            ctx.closePath();
+            ctx.fill();
+          }
 
-          // Rear thruster exhaust
+          // Rear thruster exhaust (dynamic spark)
           ctx.fillStyle = '#f97316';
-          ctx.fillRect(-18, -4, 4, 8);
-          ctx.fillStyle = '#fef08a';
           ctx.fillRect(-22, -2, 4, 4);
-
-          // Danger Warning lines on body
-          ctx.fillStyle = '#eab308';
-          ctx.fillRect(-4, -6, 2, 12);
-          ctx.fillRect(0, -6, 2, 12);
+          ctx.fillStyle = '#fef08a';
+          ctx.fillRect(-24, -1, 2, 2);
         }
         else if (b.type === 'player_evo_pierce') {
           // Evolved Incendiary Armor-Piercing core plasma bullet
@@ -2963,15 +3050,34 @@ function HelicopterGame({
         ctx.fillRect(-34, -5, 18, 6);
       }
 
-      // Draw Shield
+      // Draw Hexagonal Shield
       if (p.shield > 0) {
         ctx.beginPath();
-        ctx.arc(0, 0, p.radius + 15, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(14, 165, 233, 0.2)';
+        const hexSize = p.radius + 15;
+        for (let i = 0; i < 6; i++) {
+          const angle_deg = 60 * i - 30; // rotated
+          const angle_rad = Math.PI / 180 * angle_deg;
+          const px = Math.cos(angle_rad) * hexSize;
+          const py = Math.sin(angle_rad) * hexSize;
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        
+        ctx.fillStyle = 'rgba(14, 165, 233, 0.15)';
         ctx.fill();
-        ctx.strokeStyle = `rgba(56, 189, 248, ${0.5 + Math.sin(Date.now() / 200) * 0.3})`;
-        ctx.lineWidth = 2;
+
+        // Pulsing intense border when shield active or low
+        const pulse = 0.5 + Math.sin(Date.now() / 150) * 0.5;
+        ctx.strokeStyle = `rgba(56, 189, 248, ${0.5 + pulse * 0.5})`;
+        ctx.lineWidth = 2 + pulse * 2;
         ctx.stroke();
+
+        if (pulse > 0.8) {
+          ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
       }
 
       ctx.restore(); // retrieve shake translation frames safely
@@ -3082,67 +3188,107 @@ function HelicopterGame({
 
   const CockpitHUD = ({ mobileMode }: { mobileMode: boolean }) => {
     if (gameState !== 'PLAYING') return null;
+
+    const p = playerRef.current;
+    if (!p) return null;
+
+    const iconsMap: Record<string, string> = {
+      machine_gun: '🔫', homing_missile: '🎯', flare: '☀️', fpv_drone: '🛸', hellfire: '🌋',
+      evo_pierce: '🔥', evo_drones: '🚀', evo_doomsday: '☢️', evo_laser_web: '⚡',
+      armor: '🛡️', engine: '🚀', magnet: '🧲'
+    };
+
+    const combinedItems = [
+      ...(p.weapons || []).map(w => ({ type: w.type, level: w.level, isEvo: w.level >= 6 })),
+      ...(p.passives || []).map(ps => ({ type: ps.type, level: ps.level, isEvo: false }))
+    ].slice(0, 6);
+
+    while (combinedItems.length < 6) {
+      combinedItems.push({ type: 'empty', level: 0, isEvo: false });
+    }
+
+    const isHpLow = (hudMaxHp > 0) && (hudHp / hudMaxHp) <= 0.3;
+
     return (
       <div className={`${mobileMode ? 'flex flex-col gap-1 w-full bg-slate-950 p-2 z-10 shadow-md' : 'absolute inset-0 pointer-events-none p-3.5 flex flex-col justify-between'} select-none`}>
-        <div className={`flex ${mobileMode ? 'items-center justify-between gap-2' : 'items-start justify-between w-full'}`}>
-          <div className={`flex flex-col gap-1.5 ${mobileMode ? 'flex-1' : 'bg-slate-950/80 border border-slate-800/80 p-3 rounded-lg backdrop-blur shadow-md w-72'}`}>
-            {!mobileMode && (
-              <div className="flex items-center justify-between">
-                <span className="font-display font-black text-lg text-white">
-                  LV. <span className="text-teal-400">{hudLevel}</span>
-                </span>
-                <span className="font-mono text-[10px] text-slate-400 uppercase tracking-widest">
-                  {selectedVehicle === 'AH64' ? 'AH-64 COPTEL' : selectedVehicle === 'F22' ? 'F-22 RAPTOR' : 'AC-130H SPECTRE'}
-                </span>
+        <div className={`flex ${mobileMode ? 'flex-col gap-2' : 'flex-row items-start justify-between w-full'}`}>
+          <div className={`flex ${mobileMode ? 'items-center justify-between gap-2' : 'w-full justify-between'}`}>
+            <div className={`flex flex-col gap-1.5 ${mobileMode ? 'flex-1' : 'bg-slate-950/80 border border-slate-800/80 p-3 rounded-lg backdrop-blur shadow-md w-72'}`}>
+              {!mobileMode && (
+                <div className="flex items-center justify-between">
+                  <span className="font-display font-black text-lg text-white">
+                    LV. <span className="text-teal-400">{hudLevel}</span>
+                  </span>
+                  <span className="font-mono text-[10px] text-slate-400 uppercase tracking-widest">
+                    {selectedVehicle === 'AH64' ? 'AH-64 COPTEL' : selectedVehicle === 'F22' ? 'F-22 RAPTOR' : 'AC-130H SPECTRE'}
+                  </span>
+                </div>
+              )}
+              <div className="space-y-1">
+                <div className={`flex items-center justify-between font-mono text-slate-300 ${mobileMode ? 'text-[9px]' : 'text-[11px]'}`}>
+                  <span className="flex items-center gap-1"><Shield className="h-2 w-2 text-emerald-400" /> HP</span>
+                  <span className="text-white font-bold">{hudHp}/{hudMaxHp}</span>
+                </div>
+                <div className={`w-full bg-slate-900 border rounded-sm overflow-hidden p-0.5 ${mobileMode ? 'h-4' : 'h-5'} ${isHpLow ? 'border-rose-500 shadow-[0_0_8px_rgba(244,63,94,0.8)] animate-pulse' : 'border-slate-800'}`}>
+                  <motion.div 
+                    className={`h-full rounded-sm ${isHpLow ? 'bg-gradient-to-r from-rose-600 to-rose-400' : 'bg-gradient-to-r from-emerald-600 to-emerald-400'}`}
+                    initial={{ width: '100%' }}
+                    animate={{ width: `${(hudHp / hudMaxHp) * 100}%` }}
+                    transition={{ type: 'spring', stiffness: 80, damping: 15 }}
+                  />
+                </div>
               </div>
-            )}
-            <div className="space-y-1">
-              <div className={`flex items-center justify-between font-mono text-slate-300 ${mobileMode ? 'text-[9px]' : 'text-[11px]'}`}>
-                <span className="flex items-center gap-1"><Shield className="h-2 w-2 text-emerald-400" /> HP</span>
-                <span className="text-white font-bold">{hudHp}/{hudMaxHp}</span>
-              </div>
-              <div className="h-1.5 w-full bg-slate-900 border border-slate-800 rounded-sm overflow-hidden p-0.5">
-                <motion.div 
-                  className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 rounded-sm"
-                  initial={{ width: '100%' }}
-                  animate={{ width: `${(hudHp / hudMaxHp) * 100}%` }}
-                  transition={{ type: 'spring', stiffness: 80, damping: 15 }}
-                />
-              </div>
-            </div>
-            <div className="space-y-1">
-              <div className={`flex items-center justify-between font-mono text-slate-300 ${mobileMode ? 'text-[9px]' : 'text-[11px]'}`}>
-                <span className="flex items-center gap-1"><Zap className="h-2 w-2 text-cyan-400" /> LV.{hudLevel} XP</span>
-                <span className="text-white font-bold">{hudXp}/{hudMaxXp}</span>
-              </div>
-              <div className="h-1.5 w-full bg-slate-900 border border-slate-800 rounded-sm overflow-hidden p-0.5">
-                <motion.div 
-                  className="h-full bg-gradient-to-r from-sky-600 to-sky-400 rounded-sm"
-                  animate={{ width: `${(hudXp / hudMaxXp) * 100}%` }}
-                  transition={{ ease: 'easeOut', duration: 0.15 }}
-                />
-              </div>
-            </div>
-          </div>
-          
-          <div className={`flex items-center ${mobileMode ? 'gap-1' : 'gap-2.5'}`}>
-            <div className={`flex items-center ${mobileMode ? 'gap-1 bg-slate-900 px-1.5 py-1 rounded border border-slate-800' : 'gap-2 bg-slate-950/80 border border-slate-800/80 px-3.5 py-2 rounded-lg backdrop-blur shadow'}`}>
-              <Clock className={`${mobileMode ? 'h-3 w-3' : 'h-4 w-4'} text-amber-400 shrink-0`} />
-              <div className="font-mono text-right">
-                <div className="text-[8px] text-slate-400 uppercase tracking-widest leading-none">TIME</div>
-                <div className={`${mobileMode ? 'text-[10px]' : 'text-base font-black'} text-white leading-tight`}>
-                  {Math.floor(gameTime / 60)}:{(gameTime % 60).toString().padStart(2, '0')}
+              <div className="space-y-1">
+                <div className={`flex items-center justify-between font-mono text-slate-300 ${mobileMode ? 'text-[9px]' : 'text-[11px]'}`}>
+                  <span className="flex items-center gap-1"><Zap className="h-2 w-2 text-cyan-400" /> LV.{hudLevel} XP</span>
+                  <span className="text-white font-bold">{hudXp}/{hudMaxXp}</span>
+                </div>
+                <div className="h-1.5 w-full bg-slate-900 border border-slate-800 rounded-sm overflow-hidden p-0.5">
+                  <motion.div 
+                    className="h-full bg-gradient-to-r from-sky-600 to-sky-400 rounded-sm"
+                    animate={{ width: `${(hudXp / hudMaxXp) * 100}%` }}
+                    transition={{ ease: 'easeOut', duration: 0.15 }}
+                  />
                 </div>
               </div>
             </div>
-            <div className={`flex items-center ${mobileMode ? 'gap-1 bg-slate-900 px-1.5 py-1 rounded border border-slate-800' : 'gap-2 bg-slate-950/80 border border-slate-800/80 px-3.5 py-2 rounded-lg backdrop-blur shadow'}`}>
-              <Skull className={`${mobileMode ? 'h-3 w-3' : 'h-4 w-4'} text-rose-500 shrink-0 animate-bounce`} />
-              <div className="font-mono text-right">
-                <div className="text-[8px] text-slate-400 uppercase tracking-widest leading-none">KILLS</div>
-                <div className={`${mobileMode ? 'text-[10px]' : 'text-base font-black'} text-white leading-tight`}>{hudKills}</div>
+            
+            <div className={`flex items-center ${mobileMode ? 'gap-1' : 'gap-2.5'}`}>
+              <div className={`flex items-center ${mobileMode ? 'gap-1 bg-slate-900 px-1.5 py-1 rounded border border-slate-800' : 'gap-2 bg-slate-950/80 border border-slate-800/80 px-3.5 py-2 rounded-lg backdrop-blur shadow'}`}>
+                <Clock className={`${mobileMode ? 'h-3 w-3' : 'h-4 w-4'} text-amber-400 shrink-0`} />
+                <div className="font-mono text-right">
+                  <div className="text-[8px] text-slate-400 uppercase tracking-widest leading-none">TIME</div>
+                  <div className={`${mobileMode ? 'text-[10px]' : 'text-base font-black'} text-white leading-tight`}>
+                    {Math.floor(gameTime / 60)}:{(gameTime % 60).toString().padStart(2, '0')}
+                  </div>
+                </div>
+              </div>
+              <div className={`flex items-center ${mobileMode ? 'gap-1 bg-slate-900 px-1.5 py-1 rounded border border-slate-800' : 'gap-2 bg-slate-950/80 border border-slate-800/80 px-3.5 py-2 rounded-lg backdrop-blur shadow'}`}>
+                <Skull className={`${mobileMode ? 'h-3 w-3' : 'h-4 w-4'} text-rose-500 shrink-0 animate-bounce`} />
+                <div className="font-mono text-right">
+                  <div className="text-[8px] text-slate-400 uppercase tracking-widest leading-none">KILLS</div>
+                  <div className={`${mobileMode ? 'text-[10px]' : 'text-base font-black'} text-white leading-tight`}>{hudKills}</div>
+                </div>
               </div>
             </div>
           </div>
+
+          {/* INVENTORY SLOTS (6 max) */}
+          <div className={`${mobileMode ? 'w-full' : 'absolute top-[120px] left-3.5 w-72'} bg-slate-950/80 border border-slate-800/80 rounded-lg p-1.5 backdrop-blur flex justify-between gap-1`}>
+            {combinedItems.map((item, idx) => (
+              <div key={idx} className="flex-1 aspect-square bg-slate-900 border border-slate-800 rounded flex items-center justify-center relative shadow-inner">
+                {item.type !== 'empty' && (
+                  <>
+                    <span className="text-sm">{iconsMap[item.type] || '❓'}</span>
+                    <span className={`absolute -bottom-1 -right-0.5 text-[7px] font-black font-mono px-0.5 rounded ${item.isEvo ? 'bg-purple-600 text-white' : item.level === 5 ? 'bg-amber-500 text-slate-950' : 'bg-slate-800 text-slate-300'}`}>
+                      {item.isEvo ? 'EVO' : item.level === 5 ? 'MAX' : `L${item.level}`}
+                    </span>
+                  </>
+                )}
+              </div>
+            ))}
+          </div>
+
         </div>
 
         {!mobileMode && (
