@@ -94,7 +94,7 @@ export default function App() {
   }, []);
 
   return (
-    <div className="w-full h-screen bg-black overflow-hidden flex items-center justify-center font-sans relative">
+    <div className="w-full h-[100dvh] bg-black overflow-hidden font-sans relative">
       <HelicopterGame
         key={gameKey}
         onHardReset={handleRestart}
@@ -436,109 +436,15 @@ function HelicopterGame({
     };
   }, [onHardReset]);
 
-  // Detect Touch / Mobile Devices and bind joystick touch controller events
+  const joystickBaseRef = useRef<HTMLDivElement>(null);
+  const joystickKnobRef = useRef<HTMLDivElement>(null);
+
+  // Detect Touch / Mobile Devices
   useEffect(() => {
     // Determine initially
     const hasTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
     setIsMobile(hasTouch);
-
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const getTouchPos = (touch: Touch) => {
-      const rect = canvas.getBoundingClientRect();
-      // Translate responsive overlay back to hardcoded design space (800 x 600)
-      const x = ((touch.clientX - rect.left) / rect.width) * 800;
-      const y = ((touch.clientY - rect.top) / rect.height) * 600;
-      return { x, y };
-    };
-
-    const updateJoystickVector = (touchX: number, touchY: number) => {
-      const joy = joystickRef.current;
-      const dx = touchX - joy.baseX;
-      const dy = touchY - joy.baseY;
-      const dist = Math.hypot(dx, dy);
-      const limit = 60; // outer boundary
-
-      if (dist > limit) {
-        joy.curX = joy.baseX + (dx / dist) * limit;
-        joy.curY = joy.baseY + (dy / dist) * limit;
-        joy.vx = dx / dist; // exact normalized direction of flight
-        joy.vy = dy / dist;
-      } else {
-        joy.curX = touchX;
-        joy.curY = touchY;
-        joy.vx = dx / limit; // scalable speed multiplier [0..1]
-        joy.vy = dy / limit;
-      }
-    };
-
-    const handleTouchStart = (e: TouchEvent) => {
-      if (gameStateRef.current !== 'PLAYING') return;
-
-      const joy = joystickRef.current;
-      for (let i = 0; i < e.touches.length; i++) {
-        const touch = e.touches[i];
-        const pos = getTouchPos(touch);
-        
-        // Touch near the lower-left joystick region (160px threshold or left quadrant)
-        const distToJoyBase = Math.hypot(pos.x - joy.baseX, pos.y - joy.baseY);
-        if (distToJoyBase < 160 || (pos.x < 350 && pos.y > 250)) {
-          joy.active = true;
-          joy.startX = pos.x;
-          joy.startY = pos.y;
-          updateJoystickVector(pos.x, pos.y);
-          e.preventDefault();
-          break;
-        }
-      }
-    };
-
-    const handleTouchMove = (e: TouchEvent) => {
-      if (gameStateRef.current !== 'PLAYING') return;
-      
-      const joy = joystickRef.current;
-      if (!joy.active) return;
-
-      for (let i = 0; i < e.touches.length; i++) {
-        const touch = e.touches[i];
-        const pos = getTouchPos(touch);
-
-        updateJoystickVector(pos.x, pos.y);
-        e.preventDefault();
-        break;
-      }
-    };
-
-    const handleTouchEnd = (e: TouchEvent) => {
-      const joy = joystickRef.current;
-      if (!joy.active) return;
-      
-      // Stop joystick movement
-      joy.active = false;
-      joy.vx = 0;
-      joy.vy = 0;
-      joy.curX = joy.baseX;
-      joy.curY = joy.baseY;
-      
-      if (gameStateRef.current === 'PLAYING') {
-        e.preventDefault();
-      }
-    };
-
-    // Use passive: false to enable preventDefault scrolling lockout on touch controls!
-    canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
-    canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
-    canvas.addEventListener('touchend', handleTouchEnd, { passive: false });
-    canvas.addEventListener('touchcancel', handleTouchEnd, { passive: false });
-
-    return () => {
-      canvas.removeEventListener('touchstart', handleTouchStart);
-      canvas.removeEventListener('touchmove', handleTouchMove);
-      canvas.removeEventListener('touchend', handleTouchEnd);
-      canvas.removeEventListener('touchcancel', handleTouchEnd);
-    };
-  }, [gameState]);
+  }, []);
 
   const resetGame = () => {
     playSound('power');
@@ -3079,49 +2985,7 @@ function HelicopterGame({
         magnetFlashRef.current--;
       }
 
-      // Draw virtual joystick controls if isMobile or active
-      if (isMobile) {
-        const joy = joystickRef.current;
-        // Draw Outer Base Circle Ring (Cypher style)
-        ctx.strokeStyle = joy.active ? 'rgba(34, 211, 238, 0.6)' : 'rgba(148, 163, 184, 0.35)';
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        ctx.arc(joy.baseX, joy.baseY, 60, 0, Math.PI * 2);
-        ctx.stroke();
-
-        // 8-directional coordinate helper dots for cyber feel
-        ctx.fillStyle = joy.active ? 'rgba(34, 211, 238, 0.4)' : 'rgba(148, 163, 184, 0.2)';
-        for (let a = 0; a < 8; a++) {
-          const helperAngle = (a * Math.PI) / 4;
-          const hOffset = 60;
-          ctx.fillRect(
-            joy.baseX + Math.cos(helperAngle) * hOffset - 2,
-            joy.baseY + Math.sin(helperAngle) * hOffset - 2,
-            4,
-            4
-          );
-        }
-
-        // Draw Inner Interactive Thumb Stick Nob
-        ctx.fillStyle = joy.active ? '#22d3ee' : 'rgba(148, 163, 184, 0.5)';
-        ctx.beginPath();
-        ctx.arc(joy.curX, joy.curY, 25, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Glowing cyan dot accent on the center of thumb stick
-        ctx.fillStyle = '#ffffff';
-        ctx.beginPath();
-        ctx.arc(joy.curX, joy.curY, 7, 0, Math.PI * 2);
-        ctx.fill();
-        
-        // Connect trace line from base to center thumb
-        ctx.strokeStyle = 'rgba(34, 211, 238, 0.5)';
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.moveTo(joy.baseX, joy.baseY);
-        ctx.lineTo(joy.curX, joy.curY);
-        ctx.stroke();
-      }
+       // Joystick has been extracted to a DOM overlay module
 
       // Continue game execution frames
       animId = requestAnimationFrame(gameLoop);
@@ -3140,13 +3004,198 @@ function HelicopterGame({
     };
   }, [gameState, isMobile]);
 
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (gameStateRef.current !== 'PLAYING') return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    const joy = joystickRef.current;
+    
+    // We treat pointer events relative to the local controls container
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    
+    joy.active = true;
+    joy.startX = x;
+    joy.startY = y;
+    joy.baseX = x;
+    joy.baseY = y;
+    joy.curX = x;
+    joy.curY = y;
+    joy.vx = 0;
+    joy.vy = 0;
+
+    if (joystickBaseRef.current) {
+      joystickBaseRef.current.style.display = 'block';
+      joystickBaseRef.current.style.left = `${x}px`;
+      joystickBaseRef.current.style.top = `${y}px`;
+    }
+    if (joystickKnobRef.current) {
+      joystickKnobRef.current.style.transform = `translate(-50%, -50%) translate(0px, 0px)`;
+    }
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (gameStateRef.current !== 'PLAYING') return;
+    const joy = joystickRef.current;
+    if (!joy.active) return;
+    
+    const rect = e.currentTarget.getBoundingClientRect();
+    const tx = e.clientX - rect.left;
+    const ty = e.clientY - rect.top;
+    
+    const dx = tx - joy.baseX;
+    const dy = ty - joy.baseY;
+    const limit = 50; 
+    let curX = tx;
+    let curY = ty;
+    
+    const dist = Math.hypot(dx, dy);
+    
+    if (dist > limit) {
+      joy.vx = dx / dist;
+      joy.vy = dy / dist;
+      curX = joy.baseX + joy.vx * limit;
+      curY = joy.baseY + joy.vy * limit;
+    } else {
+      joy.vx = dx / limit;
+      joy.vy = dy / limit;
+    }
+    
+    joy.curX = curX;
+    joy.curY = curY;
+
+    if (joystickKnobRef.current) {
+      joystickKnobRef.current.style.transform = `translate(-50%, -50%) translate(${curX - joy.baseX}px, ${curY - joy.baseY}px)`;
+    }
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.currentTarget.releasePointerCapture(e.pointerId);
+    const joy = joystickRef.current;
+    joy.active = false;
+    joy.vx = 0;
+    joy.vy = 0;
+    if (joystickBaseRef.current) {
+      joystickBaseRef.current.style.display = 'none';
+    }
+  };
+
+  const CockpitHUD = ({ mobileMode }: { mobileMode: boolean }) => {
+    if (gameState !== 'PLAYING') return null;
+    return (
+      <div className={`${mobileMode ? 'flex flex-col gap-1 w-full bg-slate-950 p-2 z-10 shadow-md' : 'absolute inset-0 pointer-events-none p-3.5 flex flex-col justify-between'} select-none`}>
+        <div className={`flex ${mobileMode ? 'items-center justify-between gap-2' : 'items-start justify-between w-full'}`}>
+          <div className={`flex flex-col gap-1.5 ${mobileMode ? 'flex-1' : 'bg-slate-950/80 border border-slate-800/80 p-3 rounded-lg backdrop-blur shadow-md w-72'}`}>
+            {!mobileMode && (
+              <div className="flex items-center justify-between">
+                <span className="font-display font-black text-lg text-white">
+                  LV. <span className="text-teal-400">{hudLevel}</span>
+                </span>
+                <span className="font-mono text-[10px] text-slate-400 uppercase tracking-widest">
+                  {selectedVehicle === 'AH64' ? 'AH-64 COPTEL' : selectedVehicle === 'F22' ? 'F-22 RAPTOR' : 'AC-130H SPECTRE'}
+                </span>
+              </div>
+            )}
+            <div className="space-y-1">
+              <div className={`flex items-center justify-between font-mono text-slate-300 ${mobileMode ? 'text-[9px]' : 'text-[11px]'}`}>
+                <span className="flex items-center gap-1"><Shield className="h-2 w-2 text-emerald-400" /> HP</span>
+                <span className="text-white font-bold">{hudHp}/{hudMaxHp}</span>
+              </div>
+              <div className="h-1.5 w-full bg-slate-900 border border-slate-800 rounded-sm overflow-hidden p-0.5">
+                <motion.div 
+                  className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 rounded-sm"
+                  initial={{ width: '100%' }}
+                  animate={{ width: `${(hudHp / hudMaxHp) * 100}%` }}
+                  transition={{ type: 'spring', stiffness: 80, damping: 15 }}
+                />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <div className={`flex items-center justify-between font-mono text-slate-300 ${mobileMode ? 'text-[9px]' : 'text-[11px]'}`}>
+                <span className="flex items-center gap-1"><Zap className="h-2 w-2 text-cyan-400" /> LV.{hudLevel} XP</span>
+                <span className="text-white font-bold">{hudXp}/{hudMaxXp}</span>
+              </div>
+              <div className="h-1.5 w-full bg-slate-900 border border-slate-800 rounded-sm overflow-hidden p-0.5">
+                <motion.div 
+                  className="h-full bg-gradient-to-r from-sky-600 to-sky-400 rounded-sm"
+                  animate={{ width: `${(hudXp / hudMaxXp) * 100}%` }}
+                  transition={{ ease: 'easeOut', duration: 0.15 }}
+                />
+              </div>
+            </div>
+          </div>
+          
+          <div className={`flex items-center ${mobileMode ? 'gap-1' : 'gap-2.5'}`}>
+            <div className={`flex items-center ${mobileMode ? 'gap-1 bg-slate-900 px-1.5 py-1 rounded border border-slate-800' : 'gap-2 bg-slate-950/80 border border-slate-800/80 px-3.5 py-2 rounded-lg backdrop-blur shadow'}`}>
+              <Clock className={`${mobileMode ? 'h-3 w-3' : 'h-4 w-4'} text-amber-400 shrink-0`} />
+              <div className="font-mono text-right">
+                <div className="text-[8px] text-slate-400 uppercase tracking-widest leading-none">TIME</div>
+                <div className={`${mobileMode ? 'text-[10px]' : 'text-base font-black'} text-white leading-tight`}>
+                  {Math.floor(gameTime / 60)}:{(gameTime % 60).toString().padStart(2, '0')}
+                </div>
+              </div>
+            </div>
+            <div className={`flex items-center ${mobileMode ? 'gap-1 bg-slate-900 px-1.5 py-1 rounded border border-slate-800' : 'gap-2 bg-slate-950/80 border border-slate-800/80 px-3.5 py-2 rounded-lg backdrop-blur shadow'}`}>
+              <Skull className={`${mobileMode ? 'h-3 w-3' : 'h-4 w-4'} text-rose-500 shrink-0 animate-bounce`} />
+              <div className="font-mono text-right">
+                <div className="text-[8px] text-slate-400 uppercase tracking-widest leading-none">KILLS</div>
+                <div className={`${mobileMode ? 'text-[10px]' : 'text-base font-black'} text-white leading-tight`}>{hudKills}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {!mobileMode && (
+          <div className="w-full flex flex-col items-center gap-2.5">
+            <AnimatePresence>
+              {bossActive && (
+                <motion.div 
+                  className="w-full max-w-md bg-slate-950/90 border-2 border-purple-900/80 p-2.5 rounded-lg shadow-2xl backdrop-blur relative overflow-hidden"
+                  initial={{ opacity: 0, y: 30 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 15 }}
+                >
+                  <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-purple-500 via-pink-500 to-purple-500" />
+                  <div className="flex items-center justify-between text-xs font-mono font-bold text-slate-300 mb-1">
+                    <span className="flex items-center gap-1.5 text-purple-400 font-extrabold uppercase animate-pulse">
+                      <AlertTriangle className="h-4 w-4 text-purple-400 inline-block animate-ping" /> 敵方旗艦：巨型戰略轟炸機
+                    </span>
+                    <span className="text-white bg-purple-950 px-1.5 py-0.5 rounded border border-purple-800">{bossHp} / {bossMaxHp} HP</span>
+                  </div>
+                  <div className="h-2 w-full bg-slate-900 rounded overflow-hidden p-0.5">
+                    <div 
+                      className="h-full bg-gradient-to-r from-purple-600 via-fuchsia-500 to-pink-500 rounded transition-all duration-75"
+                      style={{ width: `${(bossHp / bossMaxHp) * 100}%` }}
+                    />
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+            <div className="bg-slate-950/80 px-4 py-1.5 rounded-full border border-slate-800/80 backdrop-blur text-[10.5px] font-mono tracking-widest uppercase text-slate-400 flex items-center gap-4">
+              <span>SEC_00-30: 偵察機湧入</span>
+              <ChevronRight className="h-3 w-3 text-slate-600" />
+              <span>SEC_60: 鋼鐵重型機</span>
+              <ChevronRight className="h-3 w-3 text-slate-600" />
+              <span className={gameTime >= 120 ? 'text-purple-400 font-bold' : ''}>SEC_120: 旗艦BOSS降臨</span>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
-    <div id="game_app_container" className="flex flex-col items-center justify-center min-h-screen px-4 py-8 select-none bg-slate-950 font-sans text-slate-100 overflow-x-hidden">
+    <div id="game_app_container" className="arcade-wrapper w-full h-[100dvh] lg:min-h-screen bg-slate-950 text-slate-100 font-sans select-none overflow-hidden lg:overflow-x-hidden lg:flex lg:flex-col lg:items-center lg:justify-center grid grid-rows-[auto_1fr_auto] lg:block lg:px-4 lg:py-8">
+      {/* MOBILE HEADER */}
+      <div className="lg:hidden w-full">
+        <CockpitHUD mobileMode={true} />
+      </div>
+
       {/* Absolute futuristic HUD command deck console casing */}
-      <div className="w-full max-w-5xl flex flex-col gap-4">
+      <div className="w-full max-w-5xl flex flex-col gap-4 flex-1 lg:flex-none">
         
         {/* UPPER NAVIGATION BAR STRIP WITH CHIPS */}
-        <div id="command_deck_header" className="flex flex-wrap items-center justify-between gap-4 border-b-2 border-slate-800 pb-4">
+        <div id="command_deck_header" className="hidden lg:flex flex-wrap items-center justify-between gap-4 border-b-2 border-slate-800 pb-4">
           <div className="flex items-center gap-3">
             <div className="relative flex h-10 w-10 items-center justify-center rounded bg-teal-500/10 text-teal-400 border border-teal-500/30">
               <span className="font-display font-black text-xl tracking-tighter">AH</span>
@@ -3184,10 +3233,10 @@ function HelicopterGame({
         </div>
 
         {/* COCKPIT DUAL-COLUMN INSTRUMENT SPLIT INTERFACES */}
-        <div id="deck_grid_split_row" className="grid grid-cols-1 lg:grid-cols-4 gap-4 items-start w-full">
+        <div id="deck_grid_split_row" className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-4 gap-4 items-start w-full">
           
           {/* LEFT AVIONICS FLIGHT CONTROLLER PANEL */}
-          <div id="left_panel_avionics" className="order-2 lg:order-1 lg:col-span-1 flex flex-col gap-4 bg-slate-900/80 border border-slate-800/80 p-4 rounded-xl shadow-lg backdrop-blur-sm self-stretch min-h-[500px]">
+          <div id="left_panel_avionics" className="hidden lg:flex flex-col gap-4 bg-slate-900/80 border border-slate-800/80 p-4 rounded-xl shadow-lg backdrop-blur-sm self-stretch min-h-[500px]">
             <h2 className="text-sm font-bold text-teal-400 font-mono tracking-wider border-b border-slate-800 pb-2 flex items-center gap-1.5 uppercase">
               <Cpu className="h-4 w-4 shrink-0 animate-pulse text-teal-500" /> Weapon Systems
             </h2>
@@ -3297,10 +3346,10 @@ function HelicopterGame({
           </div>
 
           {/* MAIN RADAR CANVAS GAME CONSOLE viewport */}
-          <div id="radar_canvas_central_core" className="order-1 lg:order-2 lg:col-span-3 flex flex-col items-center bg-slate-900/40 border border-slate-800/60 rounded-xl overflow-hidden shadow-2xl relative">
+          <div id="radar_canvas_central_core" className="h-full lg:h-auto order-1 lg:order-2 lg:col-span-3 flex flex-col items-center bg-transparent lg:bg-slate-900/40 border-0 lg:border lg:border-slate-800/60 lg:rounded-xl overflow-hidden lg:shadow-2xl relative">
             
             {/* SCREEN CALIBRATION BEZEL TOP */}
-            <div className="w-full bg-slate-900/90 text-slate-400 border-b border-slate-850 px-4 py-2 flex items-center justify-between text-xs font-mono">
+            <div className="hidden lg:flex w-full bg-slate-900/90 text-slate-400 border-b border-slate-850 px-4 py-2 items-center justify-between text-xs font-mono">
               <div className="flex items-center gap-2 text-[11px]">
                 <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse inline-block" />
                 <span className="uppercase text-emerald-400 tracking-wider">RADAR SCANNER FEED FEED [ONLINE]</span>
@@ -3313,7 +3362,7 @@ function HelicopterGame({
             </div>
 
             {/* RENDER CANVAS CONTAINER */}
-            <div className="relative border-4 border-slate-800 bg-black shadow-inner flex items-center justify-center p-0 select-none cursor-crosshair">
+            <div className="w-full flex-1 relative lg:border-4 border-y-2 border-slate-800 bg-black shadow-inner flex items-center justify-center p-0 select-none cursor-crosshair overflow-hidden">
               
               {/* HTML5 Canvas Element */}
               <canvas
@@ -3321,7 +3370,7 @@ function HelicopterGame({
                 ref={canvasRef}
                 width={800}
                 height={600}
-                className="block max-w-full h-auto rounded outline-none selection:bg-transparent"
+                className="block w-full lg:max-w-full h-auto rounded outline-none selection:bg-transparent"
               />
 
               {/* WARNING OVERLAY */}
@@ -3333,118 +3382,10 @@ function HelicopterGame({
                 </div>
               )}
 
-              {/* GAMEPLAY OVERLAY HUD IN THE CANVAS FRAME */}
-              {gameState === 'PLAYING' && (
-                <div className="absolute inset-0 pointer-events-none p-3.5 flex flex-col justify-between select-none">
-                  
-                  {/* TOP-LEFT FLIGHT AVIONICS STATS COCPIT COUNTER (Levels, HP, XP) */}
-                  <div className="flex items-start justify-between w-full">
-                    <div className="flex flex-col gap-1.5 bg-slate-950/80 border border-slate-800/80 p-3 rounded-lg backdrop-blur shadow-md w-72">
-                      <div className="flex items-center justify-between">
-                        <span className="font-display font-black text-lg text-white">
-                          LV. <span className="text-teal-400">{hudLevel}</span>
-                        </span>
-                        <span className="font-mono text-[10px] text-slate-400 uppercase tracking-widest">
-                          {selectedVehicle === 'AH64' ? 'AH-64 COPTEL' : selectedVehicle === 'F22' ? 'F-22 RAPTOR' : 'AC-130H SPECTRE'}
-                        </span>
-                      </div>
-
-                      {/* Green HP Bar */}
-                      <div className="space-y-1">
-                        <div className="flex items-center justify-between text-[11px] font-mono text-slate-300">
-                          <span className="flex items-center gap-1"><Shield className="h-3 w-3 text-emerald-400" /> 裝甲機體 (HP)</span>
-                          <span className="text-white font-bold">{hudHp} / {hudMaxHp}</span>
-                        </div>
-                        <div className="h-3 w-full bg-slate-900 border border-slate-800 rounded-sm overflow-hidden p-0.5">
-                          <motion.div 
-                            className="h-full bg-gradient-to-r from-emerald-600 to-emerald-400 rounded-sm"
-                            initial={{ width: '100%' }}
-                            animate={{ width: `${(hudHp / hudMaxHp) * 100}%` }}
-                            transition={{ type: 'spring', stiffness: 80, damping: 15 }}
-                          />
-                        </div>
-                      </div>
-
-                      {/* Blue XP Bar */}
-                      <div className="space-y-1">
-                        <div className="flex items-center justify-between text-[11px] font-mono text-slate-300">
-                          <span className="flex items-center gap-1"><Zap className="h-3 w-3 text-cyan-400 animate-pulse" /> 能量核心電池 (XP)</span>
-                          <span className="text-white font-bold">{hudXp} / {hudMaxXp}</span>
-                        </div>
-                        <div className="h-3 w-full bg-slate-900 border border-slate-800 rounded-sm overflow-hidden p-0.5">
-                          <motion.div 
-                            className="h-full bg-gradient-to-r from-sky-600 to-sky-400 rounded-sm"
-                            animate={{ width: `${(hudXp / hudMaxXp) * 100}%` }}
-                            transition={{ ease: 'easeOut', duration: 0.15 }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* TOP-RIGHT HIGH RESOLUTION BATTLE STATISTICS (Survivors Elapsed Time, Total Kills) */}
-                    <div className="flex items-center gap-2.5">
-                      <div className="flex items-center gap-2 bg-slate-950/80 border border-slate-800/80 px-3.5 py-2 rounded-lg backdrop-blur shadow">
-                        <Clock className="h-4 w-4 text-amber-400 shrink-0" />
-                        <div className="font-mono text-right">
-                          <div className="text-[9px] text-slate-400 uppercase tracking-widest leading-none">ELAPSED TIME</div>
-                          <div className="text-base font-black text-white leading-tight">
-                            {Math.floor(gameTime / 60)}:{(gameTime % 60).toString().padStart(2, '0')}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 bg-slate-950/80 border border-slate-800/80 px-3.5 py-2 rounded-lg backdrop-blur shadow">
-                        <Skull className="h-4 w-4 text-rose-500 shrink-0 animate-bounce" />
-                        <div className="font-mono text-right">
-                          <div className="text-[9px] text-slate-400 uppercase tracking-widest leading-none">CRASHED DRONES</div>
-                          <div className="text-base font-black text-white leading-tight">{hudKills}</div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* BOTTOM WARNING ZONE ALERTS & BOSS HUD INDICATOR */}
-                  <div className="w-full flex flex-col items-center gap-2.5">
-                    
-                    {/* BOSS DYNAMIC HP BANNER IN THE MIDDLE OF CRITICAL SITUATIONS */}
-                    <AnimatePresence>
-                      {bossActive && (
-                        <motion.div 
-                          className="w-full max-w-md bg-slate-950/90 border-2 border-purple-900/80 p-2.5 rounded-lg shadow-2xl backdrop-blur relative overflow-hidden"
-                          initial={{ opacity: 0, y: 30 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: 15 }}
-                        >
-                          <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-purple-500 via-pink-500 to-purple-500" />
-                          <div className="flex items-center justify-between text-xs font-mono font-bold text-slate-300 mb-1">
-                            <span className="flex items-center gap-1.5 text-purple-400 font-extrabold uppercase animate-pulse">
-                              <AlertTriangle className="h-4 w-4 text-purple-400 inline-block animate-ping" /> 敵方旗艦：巨型戰略轟炸機
-                            </span>
-                            <span className="text-white bg-purple-950 px-1.5 py-0.5 rounded border border-purple-800">{bossHp} / {bossMaxHp} HP</span>
-                          </div>
-                          
-                          <div className="h-2 w-full bg-slate-900 rounded overflow-hidden p-0.5">
-                            <div 
-                              className="h-full bg-gradient-to-r from-purple-600 via-fuchsia-500 to-pink-500 rounded transition-all duration-75"
-                              style={{ width: `${(bossHp / bossMaxHp) * 100}%` }}
-                            />
-                          </div>
-                        </motion.div>
-                      )}
-                    </AnimatePresence>
-
-                    {/* DYNAMIC TIMELINE CHIPS */}
-                    <div className="bg-slate-950/80 px-4 py-1.5 rounded-full border border-slate-800/80 backdrop-blur text-[10.5px] font-mono tracking-widest uppercase text-slate-400 flex items-center gap-4">
-                      <span>SEC_00-30: 偵察機湧入</span>
-                      <ChevronRight className="h-3 w-3 text-slate-600" />
-                      <span>SEC_60: 鋼鐵重型機</span>
-                      <ChevronRight className="h-3 w-3 text-slate-600" />
-                      <span className={gameTime >= 120 ? 'text-purple-400 font-bold' : ''}>SEC_120: 旗艦BOSS降臨</span>
-                    </div>
-                  </div>
-
-                </div>
-              )}
+              {/* GAMEPLAY OVERLAY HUD IN THE CANVAS FRAME (Desktop Only) */}
+              <div className="hidden lg:block">
+                <CockpitHUD mobileMode={false} />
+              </div>
 
               {/* OVERLAYS SYSTEM - MENU SCREENS AND DIALOGS */}
               
@@ -3817,7 +3758,7 @@ function HelicopterGame({
             </div>
 
             {/* SCREEN CALIBRATION BEZEL BOTTOM INFORMATION GRAPH */}
-            <div className="w-full bg-slate-900/90 text-slate-500 border-t border-slate-850 px-4 py-2.5 flex flex-wrap items-center justify-between text-[11px] font-mono gap-2 mt-auto">
+            <div className="hidden lg:flex w-full bg-slate-900/90 text-slate-500 border-t border-slate-850 px-4 py-2.5 flex-wrap items-center justify-between text-[11px] font-mono gap-2 mt-auto">
               <div className="flex items-center gap-1">
                 <Info className="h-3.5 w-3.5 shrink-0 text-slate-400" />
                 <span>[WASD] 移動  |  武器全自動開火，自動尋找周圍最近/HP最高威脅</span>
@@ -3832,6 +3773,34 @@ function HelicopterGame({
 
         </div>
 
+      </div>
+
+      {/* MOBILE CONTROLS FOOTER */}
+      <div 
+        className="lg:hidden w-full h-[180px] bg-[#111] border-t-2 border-slate-800 relative z-10 touch-none flex flex-col justify-center select-none"
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
+      >
+        {/* Helper instructions */}
+        <div className="absolute top-2 w-full text-center text-[10px] text-slate-500 font-mono tracking-widest uppercase pointer-events-none">
+          - 觸控此區域以移動直升機 -
+        </div>
+        
+        {/* Floating Joystick Visuals */}
+        <div 
+          ref={joystickBaseRef} 
+          className="absolute w-24 h-24 rounded-full border-2 border-cyan-500/50 bg-cyan-900/20 shadow-[0_0_15px_rgba(34,211,238,0.2)] pointer-events-none" 
+          style={{ display: 'none', transform: 'translate(-50%, -50%)' }}
+        >
+          {/* Inner Knob */}
+          <div 
+            ref={joystickKnobRef}
+            className="absolute top-1/2 left-1/2 w-10 h-10 -ml-5 -mt-5 bg-cyan-400 rounded-full shadow-[0_0_10px_rgba(34,211,238,0.8)] border-2 border-white/50"
+            style={{ transform: 'translate(-50%, -50%)' }}
+          />
+        </div>
       </div>
 
       {/* 簡易成就彈出式提醒 */}
